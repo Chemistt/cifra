@@ -1,11 +1,16 @@
 import Link from "next/link";
 
 import { LatestPost } from "@/app/_components/post";
+import { getServerSession } from "@/server/auth";
 import { api, caller, HydrateClient, prefetch } from "@/trpc/server";
 
 export default async function Home() {
   const hello = await caller.post.hello({ text: "from tRPC" });
-  prefetch(api.post.getLatest.queryOptions());
+  const session = await getServerSession();
+
+  if (session) {
+    prefetch(api.post.getLatest.queryOptions());
+  }
 
   return (
     <HydrateClient>
@@ -44,8 +49,7 @@ export default async function Home() {
               {hello ? hello.greeting : "Loading tRPC query..."}
             </p>
           </div>
-
-          <LatestPost />
+          {session ? <LatestPost /> : <p>Not logged in</p>}
         </div>
       </main>
     </HydrateClient>
