@@ -1,0 +1,334 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+enum Role {
+    USER
+    SYSMAINTAINER
+}
+
+enum PermissionLevel {
+    VIEW
+    DOWNLOAD
+    EDIT
+}
+
+model User {
+    id               String       @id @default(cuid())
+    name             String?
+    email            String       @unique
+    emailVerified    Boolean      @default(false)
+    image            String?
+    createdAt        DateTime     @default(now())
+    updatedAt        DateTime     @updatedAt
+    role             Role         @default(USER)
+    // Files
+    ownedFiles       File[]       @relation("UserOwnedFiles")
+    ownedFolders     Folder[]     @relation("UserOwnedFolders")
+    // KEK
+    userKeys         UserKey[]    @relation("UserProvidedKeys")
+    // Logging
+    auditLogs        AuditLog[]   @relation("AuditLogActor")
+    // Tags System
+    ownedTags        UserTags[]   @relation("TagOwner")
+    // Share Management
+    ownedShares      ShareGroup[] @relation("ShareGroupOwner")
+    ownedSharedFiles SharedFile[] @relation("SharedFileUploader")
+    shareGroups      ShareGroup[]
+    // Auth
+    Session          Session[]
+    Account          Account[]
+    twoFactorEnabled Boolean      @default(false)
+    TwoFactor        TwoFactor[]
+    Passkey          Passkey[]
+}
+
+// Key Encryption Key (KEK)
+model UserKey {
+    id                 String         @id @default(cuid())
+    alias              String?
+    description        String?
+    isPrimary          Boolean        @default(false) // Indicates the current default KEK for the user
+    createdAt          DateTime       @default(now())
+    expiresAt          DateTime?
+    rotatedAt          DateTime? // When this KEK version was last rotated
+    // Payload
+    encryptedDEKs      EncryptedDEK[] @relation("KEKWrappedDEKs")
+    keyIdentifierInKMS String         @unique // The ID or ARN of the key in your actual KMS (AWS KMS, Azure Key Vault, etc.)
+    // User
+    userId             String
+    user               User           @relation("UserProvidedKeys", fields: [userId], references: [id])
+
+    @@index([userId])
+}
+
+model Folder {
+    id           String      @id @default(cuid())
+    name         String
+    createdAt    DateTime    @default(now())
+    updatedAt    DateTime    @updatedAt
+    deletedAt    DateTime?
+    // Password
+    passwordHash String?
+    // Hierarchy
+    files        File[]      @relation("FilesInFolder")
+    subFolders   Folder[]    @relation("SubFolders")
+    parentId     String?
+    parent       Folder?     @relation("SubFolders", fields: [parentId], references: [id], onDelete: Cascade)
+    // User
+    ownerId      String
+    owner        User        @relation("UserOwnedFolders", fields: [ownerId], references: [id])
+    // Tags System
+    tags         FolderTag[]
+
+    @@index([ownerId])
+    @@index([parentId])
+    @@index([ownerId, name, parentId], name: "unique_folder_in_parent_for_owner") // Enforce unique names within a parent folder for a user
+}
+
+model File {
+    id            String         @id @default(cuid())
+    name          String
+    createdAt     DateTime       @default(now())
+    updatedAt     DateTime       @updatedAt
+    deletedAt     DateTime? // For soft deletes
+    // Metadata
+    storagePath   String         @unique // Path/key in your object storage (e.g., S3 key)
+    mimeType      String
+    size          BigInt // Size in bytes
+    version       Int            @default(1)
+    md5           String?
+    // Password
+    passwordHash  String?
+    // Hierarchy
+    ownerId       String
+    owner         User           @relation("UserOwnedFiles", fields: [ownerId], references: [id])
+    folderId      String
+    folder        Folder         @relation("FilesInFolder", fields: [folderId], references: [id])
+    // Encryption
+    encryptedDeks EncryptedDEK[]
+    // Tags System
+    tags          FileTag[]
+    // File Sharing
+    sharedFiles   SharedFile[]
+
+    @@index([ownerId])
+    @@index([folderId])
+    @@index([ownerId, name, folderId], name: "unique_file_in_folder_for_owner") // Enforce unique names
+}
+
+// Stores the Data Encryption Key (DEK) after it has been encrypted by a KEK
+model EncryptedDEK {
+    id            String   @id @default(cuid())
+    createdAt     DateTime @default(now())
+    // Payload
+    dekCiphertext Bytes // The encrypted DEK itself (binary data)
+    // KEK
+    kekIdUsed     String? // ID of the UserKey (KEK) that was used to encrypt this DEK, nullable if the DEK was wrapped by the system
+    kekUsed       UserKey? @relation("KEKWrappedDEKs", fields: [kekIdUsed], references: [id], onUpdate: NoAction, onDelete: Restrict)
+    // onDelete: Restrict -> Prevent deleting a KEK if it's still actively wrapping DEKs.
+    // File
+    fileId        String   @unique
+    file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+    @@index([kekIdUsed])
+}
+
+// For custom user-defined tags
+model UserTags {
+    id         String      @id @default(cuid())
+    name       String
+    // Owner
+    ownerId    String
+    owner      User        @relation("TagOwner", fields: [ownerId], references: [id])
+    // Relations
+    fileTags   FileTag[]
+    folderTags FolderTag[]
+
+    @@unique([ownerId, name]) // User cannot have duplicate tag names
+    @@index([ownerId])
+}
+
+// Join table for File and UserTags (Many-to-Many)
+model FileTag {
+    fileId     String
+    file       File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+    tagId      String
+    tag        UserTags @relation(fields: [tagId], references: [id], onDelete: Cascade)
+    // Metadata
+    assignedAt DateTime @default(now())
+    assignedBy String // userId
+
+    @@id([fileId, tagId])
+    @@index([assignedBy])
+}
+
+// Join table for Folder and UserTags (Many-to-Many)
+model FolderTag {
+    folderId   String
+    folder     Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+    tagId      String
+    tag        UserTags @relation(fields: [tagId], references: [id], onDelete: Cascade)
+    // Metadata
+    assignedAt DateTime @default(now())
+    assignedBy String // userId
+
+    @@id([folderId, tagId])
+    @@index([assignedBy])
+}
+
+model ShareGroup {
+    id              String          @id @default(cuid())
+    permissionLevel PermissionLevel
+    linkToken       String          @unique // The public part of the link
+    passwordHash    String? // Optional password for the link
+    maxDownloads    Int?
+    downloadCount   Int             @default(0)
+    createdAt       DateTime        @default(now())
+    expiresAt       DateTime?
+    // Owner
+    ownerId         String
+    owner           User            @relation("ShareGroupOwner", fields: [ownerId], references: [id])
+    // Users
+    sharedUsers     User[]
+}
+
+model SharedFile {
+    id           String @id @default(cuid())
+    folderPath   String
+    // Uploaded By
+    uploadedById String
+    uploadedBy   User   @relation("SharedFileUploader", fields: [uploadedById], references: [id])
+    // File
+    fileId       String
+    file         File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}
+
+enum AuditAction {
+    USER_REGISTER
+    USER_LOGIN
+    USER_LOGOUT
+    USER_MFA_SETUP
+    USER_MFA_VERIFY
+    USER_KEY_UPLOADED
+    USER_KEY_ROTATED
+    FILE_UPLOAD
+    FILE_DOWNLOAD
+    FILE_DELETE
+    FILE_RENAME
+    FILE_SHARE
+    FILE_UNSHARE
+    FOLDER_CREATE
+    FOLDER_DELETE
+    FOLDER_RENAME
+    FOLDER_SHARE
+    FOLDER_UNSHARE
+    LINK_CREATE
+    LINK_REVOKE
+    LINK_ACCESS
+}
+
+model AuditLog {
+    id         String      @id @default(cuid())
+    action     AuditAction
+    targetType String? // e.g., "File", "Folder", "User"
+    targetId   String? // ID of the entity acted upon
+    details    Json? // Additional context, e.g., old value, new value, IP address
+    timestamp  DateTime    @default(now())
+    ipAddress  String?
+    // Actor
+    actorId    String? // Nullable if system action
+    actor      User?       @relation("AuditLogActor", fields: [actorId], references: [id])
+
+    @@index([actorId])
+    @@index([action])
+    @@index([targetType, targetId])
+    @@index([timestamp])
+}
+
+model Session {
+    id        String   @id @default(cuid())
+    userId    String
+    user      User     @relation(fields: [userId], references: [id])
+    expiresAt DateTime
+    ipAddress String?
+    userAgent String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([userId])
+}
+
+model Account {
+    id                    String    @id @default(cuid())
+    userId                String
+    user                  User      @relation(fields: [userId], references: [id])
+    accountId             String
+    providerId            String
+    accessToken           String?
+    refreshToken          String?
+    accessTokenExpiresAt  DateTime?
+    refreshTokenExpiresAt DateTime?
+    scope                 String?
+    idToken               String?
+    password              String?
+    createdAt             DateTime  @default(now())
+    updatedAt             DateTime  @updatedAt
+
+    @@index([userId])
+}
+
+model Verification {
+    id         String   @id @default(cuid())
+    identifier String
+    value      String
+    expiresAt  DateTime
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    @@index([identifier])
+}
+
+model TwoFactor {
+    id          String   @id @default(cuid())
+    userId      String
+    user        User     @relation(fields: [userId], references: [id])
+    secret      String?
+    backupCodes String[]
+
+    @@index([userId])
+}
+
+model Passkey {
+    id           String   @id @default(cuid())
+    name         String?
+    publicKey    String
+    userId       String
+    user         User     @relation(fields: [userId], references: [id])
+    credentialID String
+    counter      Int
+    deviceType   String
+    backedUp     Boolean
+    transports   String
+    createdAt    DateTime @default(now())
+
+    @@index([userId])
+}
+
+// TODO: PLACEHOLDER, DELETE LATER
+model Post {
+    id        Int      @id @default(autoincrement())
+    name      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([name])
+}
