@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/prevent-abbreviations */
 import { PrismaClient } from "@prisma/client";
 
 import { env } from "@/env";

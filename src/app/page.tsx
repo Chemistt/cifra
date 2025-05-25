@@ -40,6 +40,7 @@ export default async function Home() {
           </div>
           <div className="flex flex-col items-center gap-2">
             <p className="text-2xl text-white">
+              {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition */}
               {hello ? hello.greeting : "Loading tRPC query..."}
             </p>
           </div>

@@ -34,8 +34,8 @@ export function LatestPost() {
         <p>You have no posts yet.</p>
       )}
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           createPost.mutate({ name });
         }}
         className="flex flex-col gap-2"
@@ -44,7 +44,9 @@ export function LatestPost() {
           type="text"
           placeholder="Title"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+          }}
           className="w-full rounded-full bg-white/10 px-4 py-2 text-white"
         />
         <button
