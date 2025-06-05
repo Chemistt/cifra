@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { LatestPost } from "@/app/_components/post";
+import { SignOutButton } from "@/components/sign-out";
+import { Button } from "@/components/ui/button";
 import { getServerSession } from "@/server/auth";
 import { api, caller, HydrateClient, prefetch } from "@/trpc/server";
 
@@ -49,7 +50,16 @@ export default async function Home() {
               {hello ? hello.greeting : "Loading tRPC query..."}
             </p>
           </div>
-          {session ? <LatestPost /> : <p>Not logged in</p>}
+          {session ? (
+            <div className="flex flex-col items-center gap-2">
+              <p>Logged in as {session.user.email}</p>
+              <SignOutButton />
+            </div>
+          ) : (
+            <Button asChild>
+              <Link href="/auth">Sign in</Link>
+            </Button>
+          )}
         </div>
       </main>
     </HydrateClient>
