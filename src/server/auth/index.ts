@@ -1,6 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { passkey } from "better-auth/plugins/passkey";
+import { twoFactor } from "better-auth/plugins/two-factor";
 import { headers } from "next/headers";
 import { cache } from "react";
 
@@ -14,6 +16,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
+  plugins: [twoFactor(), passkey()],
   socialProviders: {
     discord: {
       clientId: env.DISCORD_CLIENT_ID,
