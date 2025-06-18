@@ -1,4 +1,3 @@
-/* eslint-disable @eslint-react/naming-convention/context-name */
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { type NextRequest } from "next/server";
 
@@ -16,7 +15,7 @@ const createContext = async (request: NextRequest) => {
   });
 };
 
-const handler = (request: NextRequest) =>
+const HandlerContext = (request: NextRequest) =>
   fetchRequestHandler({
     endpoint: "/api/trpc",
     req: request,
@@ -32,4 +31,4 @@ const handler = (request: NextRequest) =>
         : undefined,
   });
 
-export { handler as GET, handler as POST };
+export { HandlerContext as GET, HandlerContext as POST };
