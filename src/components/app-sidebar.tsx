@@ -1,7 +1,7 @@
 "use client";
 
 import type { User } from "better-auth";
-import { Home, Settings } from "lucide-react";
+import { FileIcon, Home, Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -25,6 +25,11 @@ const items = [
     title: "Home",
     url: "/",
     icon: Home,
+  },
+  {
+    title: "Files",
+    url: "/files",
+    icon: FileIcon,
   },
   {
     title: "Settings",
