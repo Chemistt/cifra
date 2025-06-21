@@ -88,7 +88,7 @@ const formatDate = (date: Date): string => {
 
 // TODO: Populate it trpc instead?
 const getFileUrl = (storagePath: string): string => {
-  return `https://${env.NEXT_PUBLIC_UPLOADTHING_APP_ID}.ufs.sh/f/${storagePath}`;
+  return `https://${env.NEXT_PUBLIC_UPLOADTHING_APPID}.ufs.sh/f/${storagePath}`;
 };
 
 const handleDownload = (file: FolderItem & { type: "file" }) => {

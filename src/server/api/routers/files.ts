@@ -119,12 +119,33 @@ export const filesRouter = createTRPCRouter({
       const userId = user.id;
 
       const { name, parentId } = input;
+      let parentIdToUse = parentId;
+
+      if (!parentIdToUse) {
+        const rootFolder = await ctx.db.folder.findFirst({
+          where: {
+            ownerId: userId,
+            parentId: null,
+          },
+          select: {
+            id: true,
+          },
+        });
+        if (rootFolder) {
+          parentIdToUse = rootFolder.id;
+        } else {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Root folder not found",
+          });
+        }
+      }
 
       const newFolder = await ctx.db.folder.create({
         data: {
           name,
           ownerId: userId,
-          parentId: parentId,
+          parentId: parentIdToUse,
         },
       });
 
