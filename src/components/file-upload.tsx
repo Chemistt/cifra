@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Image, Upload } from "lucide-react";
+import { FileText, ImageIcon, UploadIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -22,7 +22,7 @@ export function FileUpload({ onUploadComplete, folderId }: FileUploadProps) {
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Upload className="h-5 w-5" />
+          <UploadIcon className="h-5 w-5" />
           Upload Files
         </CardTitle>
       </CardHeader>
@@ -103,7 +103,7 @@ export function FileUpload({ onUploadComplete, folderId }: FileUploadProps) {
 
         <div className="flex flex-wrap gap-2">
           <Badge variant="secondary" className="flex items-center gap-1">
-            <Image className="h-3 w-3" />
+            <ImageIcon className="h-3 w-3" />
             Images (4MB max)
           </Badge>
           <Badge variant="secondary" className="flex items-center gap-1">
