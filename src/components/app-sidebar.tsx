@@ -61,10 +61,8 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                   <Image src="/favicon.ico" alt="?" width={20} height={20} />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">?????</span>
-                  <span className="truncate text-xs">
-                    ???????????????????????????
-                  </span>
+                  <span className="truncate font-semibold">Cifra</span>
+                  <span className="truncate text-xs">Secure file storage.</span>
                 </div>
               </a>
             </SidebarMenuButton>

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -377,11 +378,20 @@ export default function FilesPage() {
   ]);
 
   // tRPC Queries
-  const { data: folderContents, isLoading } = useQuery(
+  const {
+    data: folderContents,
+    isLoading,
+    refetch,
+  } = useQuery(
     trpc.files.getFolderContents.queryOptions({
       folderId: currentFolderId ?? undefined,
     }),
   );
+
+  // Refresh function for after upload
+  const handleUploadComplete = () => {
+    void refetch();
+  };
 
   // Navigation functions
   const navigateToFolder = (folder: { id: string; name: string }) => {
@@ -460,10 +470,15 @@ export default function FilesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            Upload
-          </Button>
+          <FileUploadDialog
+            onUploadComplete={handleUploadComplete}
+            folderId={currentFolderId ?? undefined}
+          >
+            <Button variant="outline">
+              <Upload className="mr-2 h-4 w-4" />
+              Upload
+            </Button>
+          </FileUploadDialog>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
             New Folder

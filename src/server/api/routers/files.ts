@@ -1,4 +1,5 @@
 /* eslint-disable unicorn/no-null */
+import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
@@ -109,5 +110,76 @@ export const filesRouter = createTRPCRouter({
       });
 
       return items;
+    }),
+  createFolder: protectedProcedure
+    .input(z.object({ name: z.string(), parentId: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+
+      const { name, parentId } = input;
+
+      const newFolder = await ctx.db.folder.create({
+        data: {
+          name,
+          ownerId: userId,
+          parentId: parentId,
+        },
+      });
+
+      return newFolder;
+    }),
+  createFileMetadata: protectedProcedure
+    .input(
+      z.object({
+        name: z.string(),
+        storagePath: z.string(),
+        mimeType: z.string(),
+        size: z.number(),
+        md5: z.string().optional(),
+        folderId: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+
+      const { name, storagePath, mimeType, size, md5, folderId } = input;
+
+      let folderIdToUse = folderId;
+
+      if (!folderIdToUse) {
+        const rootFolder = await ctx.db.folder.findFirst({
+          where: {
+            ownerId: userId,
+            parentId: null,
+          },
+          select: {
+            id: true,
+          },
+        });
+        if (rootFolder) {
+          folderIdToUse = rootFolder.id;
+        } else {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Root folder not found",
+          });
+        }
+      }
+
+      const newFile = await ctx.db.file.create({
+        data: {
+          name,
+          storagePath,
+          mimeType,
+          size,
+          md5,
+          folderId: folderIdToUse,
+          ownerId: userId,
+        },
+      });
+
+      return newFile;
     }),
 });
