@@ -17,6 +17,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { FileUploadDialog } from "@/components/file-upload-dialog";
+import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -404,6 +405,11 @@ export default function FilesPage() {
     void refetch();
   };
 
+  // Refresh function for after folder creation
+  const handleFolderCreated = () => {
+    void refetch();
+  };
+
   // Navigation functions
   const navigateToFolder = (folder: { id: string; name: string }) => {
     setCurrentFolderId(folder.id);
@@ -490,10 +496,15 @@ export default function FilesPage() {
               Upload
             </Button>
           </FileUploadDialog>
-          <Button>
-            <PlusIcon className="mr-2 h-4 w-4" />
-            New Folder
-          </Button>
+          <FolderCreateDialog
+            onFolderCreated={handleFolderCreated}
+            parentId={currentFolderId ?? undefined}
+          >
+            <Button>
+              <PlusIcon className="mr-2 h-4 w-4" />
+              New Folder
+            </Button>
+          </FolderCreateDialog>
         </div>
       </div>
 
