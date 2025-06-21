@@ -1,29 +1,77 @@
-# Create T3 App
+# Cifra
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+This is a seamless file sharing platform with end-to-end encryption.
 
-## What's next? How do I make an app with this?
-
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
-
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+## Tech Stack
 
 - [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
+- [Better Auth](https://www.better-auth.com)
 - [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
 - [tRPC](https://trpc.io)
+- [Tailwind CSS](https://tailwindcss.com)
+- [UploadThing](https://uploadthing.com)
 
-## Learn More
+## Requirements
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+- Node.js 22+
+- pnpm 10.12.1+
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+You will also need to have accounts for the following services to populate the `.env` file:
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+- [Vercel](https://vercel.com)
+- [Supabase](https://supabase.com)
+- [UploadThing](https://uploadthing.com)
+- [Google Cloud (Google Auth Platform)](https://console.cloud.google.com)
+- [Discord Developer Portal](https://discord.com/developers)
 
-## How do I deploy this?
+> Note: You may not need a Supabase account if you are connecting via Vercel.
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+## Development
+
+Clone the repository.
+
+```bash
+git clone https://github.com/Chemistt/cifra.git
+cd cifra
+```
+
+Run `pnpm install` to install the dependencies.
+
+```bash
+pnpm install
+```
+
+If pnpm is not installed, use `corepack` to install it.
+
+```bash
+corepack enable
+pnpm install
+```
+
+Populate the `.env` file according to the `.env.example` file. Once done, run `pnpm run dev` to start the development server.
+
+```bash
+pnpm run dev
+```
+
+## Database
+
+If you wish to use a local database, we provide a docker file for local postgres database.
+
+```bash
+./start-database.sh
+```
+
+If you encounter errors with prisma, run `pnpm run db:push` from the root directory of your app. This command will sync your Prisma schema with your database and will generate the TypeScript types for the Prisma Client based on your schema.
+
+> Note that you need to restart the TypeScript server after doing this so that it can detect the generated types.
+
+## Editor Setup
+
+The following extensions are recommended for an optimal developer experience. The links below provide editor specific plugin support.
+
+- [Prisma Extension](https://www.prisma.io/docs/guides/development-environment/editor-setup)
+- [Tailwind CSS IntelliSense Extension](https://tailwindcss.com/docs/editor-setup)
+- [Prettier Extension](https://prettier.io/docs/en/editors.html)
+- [ESLint Extension](https://eslint.org/docs/latest/user-guide/integrations#editors)
+- [Prety TypeScript Errors Extension](https://marketplace.visualstudio.com/items?itemName=yoavbls.pretty-ts-errors)
