@@ -73,6 +73,7 @@ export const filesRouter = createTRPCRouter({
             name: true,
             mimeType: true,
             size: true,
+            storagePath: true,
             createdAt: true,
             updatedAt: true,
             passwordHash: true,

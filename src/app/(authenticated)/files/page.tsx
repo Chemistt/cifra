@@ -4,16 +4,15 @@
 import { useQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
-  Download,
-  Eye,
-  Folder,
-  Home,
-  Lock,
-  MoreVertical,
-  Plus,
-  Search,
-  Share,
-  Upload,
+  DownloadIcon,
+  FolderIcon,
+  HomeIcon,
+  LockIcon,
+  MoreVerticalIcon,
+  PlusIcon,
+  SearchIcon,
+  ShareIcon,
+  UploadIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -38,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { env } from "@/env";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
 
@@ -83,6 +83,17 @@ const formatDate = (date: Date): string => {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+};
+
+// TODO: Populate it trpc instead?
+const getFileUrl = (storagePath: string): string => {
+  return `https://${env.NEXT_PUBLIC_UPLOADTHING_APP_ID}.ufs.sh/f/${storagePath}`;
+};
+
+const handleDownload = (file: FolderItem & { type: "file" }) => {
+  if (!file.storagePath) return;
+  const fileUrl = getFileUrl(file.storagePath);
+  window.open(fileUrl, "_blank");
 };
 
 // Loading component
@@ -136,9 +147,9 @@ function GridView({
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Folder className="h-8 w-8 text-blue-500" />
+                  <FolderIcon className="h-8 w-8 text-blue-500" />
                   {folder.passwordHash && (
-                    <Lock className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -179,7 +190,7 @@ function GridView({
                 <div className="relative">
                   <div className="text-2xl">{getFileIcon(item.mimeType)}</div>
                   {item.passwordHash && (
-                    <Lock className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -212,20 +223,20 @@ function GridView({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm">
-                      <MoreVertical className="h-4 w-4" />
+                      <MoreVerticalIcon className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <Eye className="mr-2 h-4 w-4" />
-                      Preview
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Download className="mr-2 h-4 w-4" />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        handleDownload(item);
+                      }}
+                    >
+                      <DownloadIcon className="mr-2 h-4 w-4" />
                       Download
                     </DropdownMenuItem>
                     <DropdownMenuItem>
-                      <Share className="mr-2 h-4 w-4" />
+                      <ShareIcon className="mr-2 h-4 w-4" />
                       Share
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -265,9 +276,9 @@ function ListView({
             }}
           >
             <div className="relative">
-              <Folder className="h-6 w-6 text-blue-500" />
+              <FolderIcon className="h-6 w-6 text-blue-500" />
               {folder.passwordHash && (
-                <Lock className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
               )}
             </div>
             <div className="min-w-0 flex-1">
@@ -302,7 +313,7 @@ function ListView({
             <div className="relative">
               <div className="text-xl">{getFileIcon(file.mimeType)}</div>
               {file.passwordHash && (
-                <Lock className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
               )}
             </div>
             <div className="min-w-0 flex-1">
@@ -324,20 +335,20 @@ function ListView({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm">
-                  <MoreVertical className="h-4 w-4" />
+                  <MoreVerticalIcon className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>
-                  <Eye className="mr-2 h-4 w-4" />
-                  Preview
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Download className="mr-2 h-4 w-4" />
+                <DropdownMenuItem
+                  onClick={() => {
+                    handleDownload(file);
+                  }}
+                >
+                  <DownloadIcon className="mr-2 h-4 w-4" />
                   Download
                 </DropdownMenuItem>
                 <DropdownMenuItem>
-                  <Share className="mr-2 h-4 w-4" />
+                  <ShareIcon className="mr-2 h-4 w-4" />
                   Share
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -356,7 +367,7 @@ type EmptyStateProps = {
 function EmptyState({ searchQuery }: EmptyStateProps) {
   return (
     <div className="py-12 text-center">
-      <Folder className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
+      <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
       <h3 className="mb-2 text-lg font-medium">No files found</h3>
       <p className="text-muted-foreground">
         {searchQuery
@@ -475,12 +486,12 @@ export default function FilesPage() {
             folderId={currentFolderId ?? undefined}
           >
             <Button variant="outline">
-              <Upload className="mr-2 h-4 w-4" />
+              <UploadIcon className="mr-2 h-4 w-4" />
               Upload
             </Button>
           </FileUploadDialog>
           <Button>
-            <Plus className="mr-2 h-4 w-4" />
+            <PlusIcon className="mr-2 h-4 w-4" />
             New Folder
           </Button>
         </div>
@@ -490,7 +501,7 @@ export default function FilesPage() {
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-4">
           <div className="relative max-w-md flex-1">
-            <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
+            <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
             <Input
               placeholder="Search files and folders..."
               value={searchQuery}
@@ -512,7 +523,7 @@ export default function FilesPage() {
                 }}
                 className="flex cursor-pointer items-center gap-1"
               >
-                <Home className="h-4 w-4" />
+                <HomeIcon className="h-4 w-4" />
                 {breadcrumbs[0]?.name}
               </BreadcrumbLink>
             </BreadcrumbItem>
