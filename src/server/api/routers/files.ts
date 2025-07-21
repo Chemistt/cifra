@@ -204,4 +204,140 @@ export const filesRouter = createTRPCRouter({
 
       return newFile;
     }),
+  searchFiles: protectedProcedure
+    .input(
+      z.object({
+        query: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { query } = input;
+
+      // If no query is provided, return empty results
+      if (!query.trim()) {
+        return [];
+      }
+
+      // Search directly across all user's folders and files
+      const [matchingFolders, matchingFiles] = await Promise.all([
+        ctx.db.folder.findMany({
+          where: {
+            ownerId: userId,
+            deletedAt: null,
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+            createdAt: true,
+            updatedAt: true,
+            passwordHash: true,
+            parentId: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
+          },
+          take: 50, // Limit results for performance
+        }),
+        ctx.db.file.findMany({
+          where: {
+            ownerId: userId,
+            deletedAt: null,
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+            mimeType: true,
+            size: true,
+            storagePath: true,
+            createdAt: true,
+            updatedAt: true,
+            passwordHash: true,
+            folderId: true,
+            tags: {
+              include: {
+                tag: true,
+              },
+            },
+          },
+          take: 50, // Limit results for performance
+        }),
+      ]);      // Get folder paths for context
+      const getFolderPath = async (folderId: string): Promise<string[]> => {
+        const folder = await ctx.db.folder.findUnique({
+          where: { id: folderId },
+          select: { name: true, parentId: true },
+        });
+
+        if (!folder?.parentId) {
+          return folder?.name ? [folder.name] : [];
+        }
+
+        const parentPath = await getFolderPath(folder.parentId);
+        return [...parentPath, folder.name];
+      };
+
+      // Map folders with path information
+      const mappedFolders = await Promise.all(
+        matchingFolders.map(async (folder) => {
+          const path = folder.parentId
+            ? await getFolderPath(folder.parentId)
+            : [];
+          return {
+            ...folder,
+            type: "folder" as const,
+            tags: folder.tags.map((tagRelation) => tagRelation.tag),
+            path: path,
+          };
+        }),
+      );
+
+      // Map files with path information
+      const mappedFiles = await Promise.all(
+        matchingFiles.map(async (file) => {
+          const path = await getFolderPath(file.folderId);
+          return {
+            ...file,
+            type: "file" as const,
+            tags: file.tags.map((tagRelation) => tagRelation.tag),
+            path: path,
+          };
+        }),
+      );
+
+      const results = [...mappedFolders, ...mappedFiles];
+
+      // Sort results: folders first, then by relevance (exact match first), then by name
+      results.sort((a, b) => {
+        // Folders first
+        if (a.type === "folder" && b.type === "file") {
+          return -1;
+        }
+        if (a.type === "file" && b.type === "folder") {
+          return 1;
+        }
+
+        // Exact matches first
+        const aExact = a.name.toLowerCase() === query.toLowerCase();
+        const bExact = b.name.toLowerCase() === query.toLowerCase();
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        // Then by name
+        return a.name.localeCompare(b.name);
+      });
+
+      return results;
+    }),
 });

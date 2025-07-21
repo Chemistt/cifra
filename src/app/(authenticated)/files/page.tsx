@@ -45,17 +45,30 @@ import { useTRPC } from "@/trpc/react";
 // Infer types from your tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type FolderItem = RouterOutput["files"]["getFolderContents"][number];
+type SearchResult = RouterOutput["files"]["searchFiles"][number];
 type BreadcrumbData = { id: string | null; name: string };
 
 // Type guards for discriminated union
 const isFolder = (
-  item: FolderItem,
-): item is FolderItem & { type: "folder" } => {
+  item: FolderItem | SearchResult,
+): item is (FolderItem | SearchResult) & { type: "folder" } => {
   return item.type === "folder";
 };
 
-const isFile = (item: FolderItem): item is FolderItem & { type: "file" } => {
+const isFile = (
+  item: FolderItem | SearchResult,
+): item is (FolderItem | SearchResult) & { type: "file" } => {
   return item.type === "file";
+};
+
+// Helper function to check if item has path info (search result)
+const hasPathInfo = (item: FolderItem | SearchResult): item is SearchResult =>
+  "path" in item && Array.isArray(item.path);
+
+// Helper function to format path for display
+const formatPathDisplay = (path: string[]) => {
+  if (path.length === 0) return "Root";
+  return path.join(" / ");
 };
 
 // Utility functions
@@ -122,8 +135,8 @@ function LoadingView() {
 
 // Grid view component
 type GridViewProps = {
-  foldersToRender: FolderItem[];
-  filesToRender: FolderItem[];
+  foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
+  filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
 };
 
@@ -158,6 +171,11 @@ function GridView({
                   <p className="text-muted-foreground text-sm">
                     {formatDate(folder.updatedAt)}
                   </p>
+                  {hasPathInfo(folder) && folder.path.length > 0 && (
+                    <p className="text-muted-foreground text-xs italic">
+                      📁 {formatPathDisplay(folder.path)}
+                    </p>
+                  )}
                   {folder.tags.length > 0 && (
                     <div className="mt-1 flex gap-1">
                       {folder.tags.slice(0, 2).map((tag) => (
@@ -202,6 +220,11 @@ function GridView({
                   <p className="text-muted-foreground text-xs">
                     {formatDate(item.updatedAt)}
                   </p>
+                  {hasPathInfo(item) && item.path.length > 0 && (
+                    <p className="text-muted-foreground text-xs italic">
+                      📁 {formatPathDisplay(item.path)}
+                    </p>
+                  )}
                   {item.tags.length > 0 && (
                     <div className="mt-1 flex gap-1">
                       {item.tags.slice(0, 2).map((tag) => (
@@ -253,8 +276,8 @@ function GridView({
 
 // List view component
 type ListViewProps = {
-  foldersToRender: FolderItem[];
-  filesToRender: FolderItem[];
+  foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
+  filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
 };
 
@@ -284,6 +307,11 @@ function ListView({
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="font-medium">{folder.name}</h4>
+              {hasPathInfo(folder) && folder.path.length > 0 && (
+                <p className="text-muted-foreground text-xs italic">
+                  📁 {formatPathDisplay(folder.path)}
+                </p>
+              )}
             </div>
             <div className="text-muted-foreground flex items-center gap-4 text-sm">
               <span>{formatDate(folder.updatedAt)}</span>
@@ -319,6 +347,11 @@ function ListView({
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="font-medium">{file.name}</h4>
+              {hasPathInfo(file) && file.path.length > 0 && (
+                <p className="text-muted-foreground text-xs italic">
+                  📁 {formatPathDisplay(file.path)}
+                </p>
+              )}
             </div>
             <div className="text-muted-foreground flex items-center gap-4 text-sm">
               <span>{formatDate(file.updatedAt)}</span>
@@ -392,13 +425,30 @@ export default function FilesPage() {
   // tRPC Queries
   const {
     data: folderContents,
-    isLoading,
+    isLoading: isFolderLoading,
     refetch,
   } = useQuery(
     trpc.files.getFolderContents.queryOptions({
       folderId: currentFolderId ?? undefined,
     }),
   );
+
+  // Search query - only execute if searchQuery is not empty
+  const { data: searchResults, isLoading: isSearchLoading } = useQuery({
+    ...trpc.files.searchFiles.queryOptions({
+      query: searchQuery,
+    }),
+    enabled: searchQuery.trim().length > 0, // Only run if there's a search query
+  });
+
+  // Determine which data to use
+  const isLoading =
+    searchQuery.trim().length > 0 ? isSearchLoading : isFolderLoading;
+  const dataToRender = useMemo(() => {
+    return searchQuery.trim().length > 0
+      ? (searchResults ?? [])
+      : (folderContents ?? []);
+  }, [searchQuery, searchResults, folderContents]);
 
   // Refresh function for after upload
   const handleUploadComplete = () => {
@@ -425,17 +475,13 @@ export default function FilesPage() {
 
   // Filter data based on search
   const filteredItems = useMemo(() => {
-    if (!folderContents) return [];
-    if (!searchQuery) return folderContents;
-    return folderContents.filter((item) =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-  }, [folderContents, searchQuery]);
+    return dataToRender;
+  }, [dataToRender]);
 
   // Separate filtered items into folders and files for rendering
   const { foldersToRender, filesToRender } = useMemo(() => {
-    const folders: FolderItem[] = [];
-    const files: FolderItem[] = [];
+    const folders: ((FolderItem | SearchResult) & { type: "folder" })[] = [];
+    const files: ((FolderItem | SearchResult) & { type: "file" })[] = [];
     for (const item of filteredItems) {
       if (isFolder(item)) {
         folders.push(item);
