@@ -321,6 +321,7 @@ model Passkey {
     backedUp     Boolean
     transports   String
     createdAt    DateTime @default(now())
+    aaguid       String?
 
     @@index([userId])
 }

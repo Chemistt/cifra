@@ -10,6 +10,7 @@ import { env } from "@/env";
 
 const prisma = new PrismaClient();
 export const auth = betterAuth({
+  appName: "Cifra",
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
