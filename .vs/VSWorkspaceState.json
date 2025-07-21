@@ -1,0 +1,16 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\prisma",
+    "\\prisma\\migrations",
+    "\\public",
+    "\\src",
+    "\\src\\app",
+    "\\src\\app\\(authenticated)",
+    "\\src\\app\\(authenticated)\\files",
+    "\\src\\app\\api",
+    "\\src\\app\\api\\trpc"
+  ],
+  "SelectedNode": "\\README.md",
+  "PreviewInSolutionExplorer": false
+}
