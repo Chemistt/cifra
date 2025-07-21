@@ -1,4 +1,5 @@
 import { filesRouter } from "@/server/api/routers/files";
+import { kmsRouter } from "@/server/api/routers/kms";
 import { passkeyRouter } from "@/server/api/routers/passkey";
 import { profileRouter } from "@/server/api/routers/profile";
 import { totpRouter } from "@/server/api/routers/totp";
@@ -14,6 +15,7 @@ export const appRouter = createTRPCRouter({
   passkey: passkeyRouter,
   totp: totpRouter,
   files: filesRouter,
+  kms: kmsRouter,
 });
 
 // export type definition of API
