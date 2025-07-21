@@ -2,7 +2,6 @@ import {
   CreateAliasCommand,
   CreateKeyCommand,
   DeleteAliasCommand,
-  DescribeKeyCommand,
   KeySpec,
   KeyUsageType,
   KMSClient,
@@ -39,31 +38,7 @@ export const kmsRouter = createTRPCRouter({
       },
     });
 
-    // Get additional details from AWS KMS for each key
-    const enrichedKeys = await Promise.all(
-      keys.map(async (key) => {
-        try {
-          const describeCommand = new DescribeKeyCommand({
-            KeyId: key.keyIdentifierInKMS,
-          });
-          const kmsKeyDetails = await client.send(describeCommand);
-
-          return {
-            ...key,
-            kmsKeyDetails: kmsKeyDetails.KeyMetadata,
-          };
-        } catch (error) {
-          console.error(`Error fetching KMS details for key ${key.id}:`, error);
-          return {
-            ...key,
-            // eslint-disable-next-line unicorn/no-null -- DB Operations
-            kmsKeyDetails: null,
-          };
-        }
-      }),
-    );
-
-    return enrichedKeys;
+    return keys;
   }),
 
   createKey: protectedProcedure

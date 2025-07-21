@@ -63,6 +63,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDate } from "@/lib/utils";
 import { useTRPC } from "@/trpc/react";
 
 const createKeySchema = z.object({
@@ -187,50 +188,7 @@ export function SettingsKeyManagement() {
     deleteKeyMutation.mutate({ id });
   };
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date);
-  };
-
-  const getKeyStatus = (kmsKeyDetails: any) => {
-    if (!kmsKeyDetails) return "Unknown";
-
-    if (kmsKeyDetails.KeyState === "Enabled") {
-      return "Active";
-    } else if (kmsKeyDetails.KeyState === "PendingDeletion") {
-      return "Pending Deletion";
-    } else if (kmsKeyDetails.KeyState === "Disabled") {
-      return "Disabled";
-    }
-
-    return kmsKeyDetails.KeyState || "Unknown";
-  };
-
-  type KeyStatus = "Active" | "Pending Deletion" | "Disabled" | "Unknown";
-
-  const getStatusBadgeVariant = (status: KeyStatus) => {
-    switch (status) {
-      case "Active": {
-        return "default";
-      }
-      case "Pending Deletion": {
-        return "destructive";
-      }
-      case "Disabled": {
-        return "secondary";
-      }
-      default: {
-        return "outline";
-      }
-    }
-  };
-
-  const hasKeys = keys.data && keys.data.length > 0;
+  const hasKeys = keys.data.length > 0;
 
   const renderEmptyState = () => (
     <div className="flex flex-col items-center justify-center py-12">
@@ -258,7 +216,10 @@ export function SettingsKeyManagement() {
           </DialogHeader>
           <Form {...createForm}>
             <form
-              onSubmit={createForm.handleSubmit(handleCreateKey)}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createForm.handleSubmit(handleCreateKey)(event);
+              }}
               className="space-y-4"
             >
               <FormField
@@ -365,7 +326,7 @@ export function SettingsKeyManagement() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {keys.data?.map((key) => (
+          {keys.data.map((key) => (
             <TableRow key={key.id}>
               <TableCell>
                 <div className="flex items-center space-x-2">
@@ -388,13 +349,7 @@ export function SettingsKeyManagement() {
                 </div>
               </TableCell>
               <TableCell>
-                <Badge
-                  variant={getStatusBadgeVariant(
-                    getKeyStatus(key.kmsKeyDetails),
-                  )}
-                >
-                  {getKeyStatus(key.kmsKeyDetails)}
-                </Badge>
+                <Badge variant="default">Active</Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {formatDate(key.createdAt)}
@@ -405,7 +360,12 @@ export function SettingsKeyManagement() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      handleEditKey(key);
+                      handleEditKey({
+                        id: key.id,
+                        alias: key.alias,
+                        description: key.description ?? "",
+                        isPrimary: key.isPrimary,
+                      });
                     }}
                     disabled={updateKeyMutation.isPending}
                   >
@@ -425,9 +385,9 @@ export function SettingsKeyManagement() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Delete Key</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Are you sure you want to delete the key "{key.alias}"?
-                          This action cannot be undone and the key will be
-                          scheduled for deletion in AWS KMS.
+                          Are you sure you want to delete the key{" "}
+                          {`"${key.alias}"`}? This action cannot be undone and
+                          the key will be scheduled for deletion in AWS KMS.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -485,7 +445,10 @@ export function SettingsKeyManagement() {
               </DialogHeader>
               <Form {...createForm}>
                 <form
-                  onSubmit={createForm.handleSubmit(handleCreateKey)}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createForm.handleSubmit(handleCreateKey)(event);
+                  }}
                   className="space-y-4"
                 >
                   <FormField
@@ -597,7 +560,10 @@ export function SettingsKeyManagement() {
           </DialogHeader>
           <Form {...editForm}>
             <form
-              onSubmit={editForm.handleSubmit(handleUpdateKey)}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void editForm.handleSubmit(handleUpdateKey)(event);
+              }}
               className="space-y-4"
             >
               <FormField

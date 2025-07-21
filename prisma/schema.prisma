@@ -55,7 +55,7 @@ model User {
 // Key Encryption Key (KEK)
 model UserKey {
     id                 String         @id @default(cuid())
-    alias              String?
+    alias              String
     description        String?
     isPrimary          Boolean        @default(false) // Indicates the current default KEK for the user
     createdAt          DateTime       @default(now())
