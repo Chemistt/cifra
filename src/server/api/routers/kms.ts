@@ -11,7 +11,7 @@ import {
   UpdateKeyDescriptionCommand,
 } from "@aws-sdk/client-kms";
 import { TRPCError } from "@trpc/server";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 
