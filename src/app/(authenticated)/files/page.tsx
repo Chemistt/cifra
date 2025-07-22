@@ -1,10 +1,14 @@
 /* eslint-disable unicorn/no-null */
+/* eslint-disable simple-import-sort/imports */
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+
 import type { inferRouterOutputs } from "@trpc/server";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   DownloadIcon,
+  EditIcon,
   FolderIcon,
   HomeIcon,
   LockIcon,
@@ -14,7 +18,7 @@ import {
   ShareIcon,
   UploadIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
@@ -30,6 +34,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -42,7 +52,7 @@ import { env } from "@/env";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
 
-// Infer types from your tRPC router for full type safety
+// Infering types from tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type FolderItem = RouterOutput["files"]["getFolderContents"][number];
 type SearchResult = RouterOutput["files"]["searchFiles"][number];
@@ -138,12 +148,14 @@ type GridViewProps = {
   foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
   filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
+  startRenaming: (file: { id: string; name: string }) => void;
 };
 
 function GridView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
+  startRenaming,
 }: GridViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -253,6 +265,14 @@ function GridView({
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       onClick={() => {
+                        startRenaming(item);
+                      }}
+                    >
+                      <EditIcon className="mr-2 h-4 w-4" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
                         handleDownload(item);
                       }}
                     >
@@ -279,12 +299,14 @@ type ListViewProps = {
   foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
   filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
+  startRenaming: (file: { id: string; name: string }) => void;
 };
 
 function ListView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
+  startRenaming,
 }: ListViewProps) {
   return (
     <div className="space-y-2">
@@ -375,6 +397,14 @@ function ListView({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => {
+                    startRenaming(file);
+                  }}
+                >
+                  <EditIcon className="mr-2 h-4 w-4" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
                     handleDownload(file);
                   }}
                 >
@@ -422,6 +452,13 @@ export default function FilesPage() {
     { id: null, name: "My Files" },
   ]);
 
+  // Rename file state
+  const [editingFile, setEditingFile] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [newFileName, setNewFileName] = useState("");
+
   // tRPC Queries
   const {
     data: folderContents,
@@ -458,6 +495,41 @@ export default function FilesPage() {
   // Refresh function for after folder creation
   const handleFolderCreated = () => {
     void refetch();
+  };
+
+  // Rename file mutation
+  const renameFileMutation = useMutation(
+    trpc.files.renameFile.mutationOptions({
+      onSuccess: () => {
+        toast.success("File renamed successfully");
+        setEditingFile(null);
+        setNewFileName("");
+        void refetch();
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+
+  // Rename file handlers
+  const startRenaming = (file: { id: string; name: string }) => {
+    setEditingFile(file);
+    setNewFileName(file.name);
+  };
+
+  const handleRename = () => {
+    if (!editingFile || !newFileName.trim()) return;
+
+    renameFileMutation.mutate({
+      fileId: editingFile.id,
+      newName: newFileName.trim(),
+    });
+  };
+
+  const cancelRename = () => {
+    setEditingFile(null);
+    setNewFileName("");
   };
 
   // Navigation functions
@@ -509,6 +581,7 @@ export default function FilesPage() {
           foldersToRender={foldersToRender}
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
+          startRenaming={startRenaming}
         />
       );
     }
@@ -518,6 +591,7 @@ export default function FilesPage() {
         foldersToRender={foldersToRender}
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
+        startRenaming={startRenaming}
       />
     );
   };
@@ -641,6 +715,59 @@ export default function FilesPage() {
           {renderContent()}
         </CardContent>
       </Card>
+
+      {/* Rename File Dialog */}
+      <Dialog
+        open={editingFile !== null}
+        onOpenChange={() => {
+          if (editingFile) {
+            cancelRename();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename File</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="fileName" className="text-sm font-medium">
+                File Name
+              </label>
+              <input
+                id="fileName"
+                type="text"
+                value={newFileName}
+                onChange={(event) => {
+                  setNewFileName(event.target.value);
+                }}
+                className="mt-1 w-full rounded border p-2"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    handleRename();
+                  } else if (event.key === "Escape") {
+                    cancelRename();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={cancelRename}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleRename}
+                disabled={
+                  !newFileName.trim() || newFileName === editingFile?.name
+                }
+              >
+                Rename
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
