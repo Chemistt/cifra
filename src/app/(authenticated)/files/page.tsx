@@ -1,11 +1,7 @@
-/* eslint-disable unicorn/no-null */
-/* eslint-disable simple-import-sort/imports */
 "use client";
 
-import { useMemo, useState } from "react";
-
-import type { inferRouterOutputs } from "@trpc/server";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import type { inferRouterOutputs } from "@trpc/server";
 import {
   DownloadIcon,
   EditIcon,
@@ -18,6 +14,7 @@ import {
   ShareIcon,
   UploadIcon,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { FileUploadDialog } from "@/components/file-upload-dialog";
@@ -49,6 +46,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { env } from "@/env";
+import { formatDate } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
 
@@ -56,7 +54,7 @@ import { useTRPC } from "@/trpc/react";
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type FolderItem = RouterOutput["files"]["getFolderContents"][number];
 type SearchResult = RouterOutput["files"]["searchFiles"][number];
-type BreadcrumbData = { id: string | null; name: string };
+type BreadcrumbData = { id: string | undefined; name: string };
 
 // Type guards for discriminated union
 const isFolder = (
@@ -99,16 +97,6 @@ const getFileIcon = (mimeType: string) => {
   return "📄";
 };
 
-const formatDate = (date: Date): string => {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-};
-
 // TODO: Populate it trpc instead?
 const getFileUrl = (storagePath: string): string => {
   return `https://${env.NEXT_PUBLIC_UPLOADTHING_APPID}.ufs.sh/f/${storagePath}`;
@@ -143,8 +131,7 @@ function LoadingView() {
   );
 }
 
-// Grid view component
-type GridViewProps = {
+type ViewProps = {
   foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
   filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
@@ -156,7 +143,7 @@ function GridView({
   filesToRender,
   navigateToFolder,
   startRenaming,
-}: GridViewProps) {
+}: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
@@ -288,26 +275,18 @@ function GridView({
               </div>
             </CardContent>
           </Card>
-        ) : null,
+        ) : undefined,
       )}
     </div>
   );
 }
-
-// List view component
-type ListViewProps = {
-  foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
-  filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
-  navigateToFolder: (folder: { id: string; name: string }) => void;
-  startRenaming: (file: { id: string; name: string }) => void;
-};
 
 function ListView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
   startRenaming,
-}: ListViewProps) {
+}: ViewProps) {
   return (
     <div className="space-y-2">
       {/* Folders */}
@@ -423,12 +402,7 @@ function ListView({
   );
 }
 
-// Empty state component
-type EmptyStateProps = {
-  searchQuery: string;
-};
-
-function EmptyState({ searchQuery }: EmptyStateProps) {
+function EmptyState({ searchQuery }: { searchQuery: string }) {
   return (
     <div className="py-12 text-center">
       <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
@@ -445,19 +419,22 @@ function EmptyState({ searchQuery }: EmptyStateProps) {
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
-    { id: null, name: "My Files" },
+    { id: undefined, name: "My Files" },
   ]);
 
-  // Rename file state
-  const [editingFile, setEditingFile] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [newFileName, setNewFileName] = useState("");
+  const [renameState, setRenameState] = useState<{
+    file: { id: string; name: string } | undefined;
+    newName: string;
+    isOpen: boolean;
+  }>({
+    file: undefined,
+    newName: "",
+    isOpen: false,
+  });
 
   // tRPC Queries
   const {
@@ -502,8 +479,11 @@ export default function FilesPage() {
     trpc.files.renameFile.mutationOptions({
       onSuccess: () => {
         toast.success("File renamed successfully");
-        setEditingFile(null);
-        setNewFileName("");
+        setRenameState({
+          file: undefined,
+          newName: "",
+          isOpen: false,
+        });
         void refetch();
       },
       onError: (error) => {
@@ -514,22 +494,28 @@ export default function FilesPage() {
 
   // Rename file handlers
   const startRenaming = (file: { id: string; name: string }) => {
-    setEditingFile(file);
-    setNewFileName(file.name);
+    setRenameState({
+      file,
+      newName: file.name,
+      isOpen: true,
+    });
   };
 
   const handleRename = () => {
-    if (!editingFile || !newFileName.trim()) return;
+    if (!renameState.file || !renameState.newName.trim()) return;
 
     renameFileMutation.mutate({
-      fileId: editingFile.id,
-      newName: newFileName.trim(),
+      fileId: renameState.file.id,
+      newName: renameState.newName.trim(),
     });
   };
 
   const cancelRename = () => {
-    setEditingFile(null);
-    setNewFileName("");
+    setRenameState({
+      file: undefined,
+      newName: "",
+      isOpen: false,
+    });
   };
 
   // Navigation functions
@@ -542,7 +528,7 @@ export default function FilesPage() {
     const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
     setBreadcrumbs(newBreadcrumbs);
     const targetFolder = newBreadcrumbs.at(-1);
-    setCurrentFolderId(targetFolder?.id ?? null);
+    setCurrentFolderId(targetFolder?.id);
   };
 
   // Filter data based on search
@@ -718,9 +704,9 @@ export default function FilesPage() {
 
       {/* Rename File Dialog */}
       <Dialog
-        open={editingFile !== null}
+        open={!!renameState.file}
         onOpenChange={() => {
-          if (editingFile) {
+          if (renameState.file) {
             cancelRename();
           }
         }}
@@ -737,9 +723,12 @@ export default function FilesPage() {
               <input
                 id="fileName"
                 type="text"
-                value={newFileName}
+                value={renameState.newName}
                 onChange={(event) => {
-                  setNewFileName(event.target.value);
+                  setRenameState({
+                    ...renameState,
+                    newName: event.target.value,
+                  });
                 }}
                 className="mt-1 w-full rounded border p-2"
                 onKeyDown={(event) => {
@@ -759,7 +748,8 @@ export default function FilesPage() {
               <Button
                 onClick={handleRename}
                 disabled={
-                  !newFileName.trim() || newFileName === editingFile?.name
+                  !renameState.newName.trim() ||
+                  renameState.newName === renameState.file?.name
                 }
               >
                 Rename
