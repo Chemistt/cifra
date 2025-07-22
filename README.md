@@ -48,6 +48,14 @@ corepack enable
 pnpm install
 ```
 
+Run `pnpm run postinstall` to generate the Prisma Client, which generates the TypeScript types for the Prisma Client based on your schema
+
+```bash
+pnpm run postinstall
+```
+
+> Note that you need to restart the TypeScript server after doing this so that it can detect the generated types.
+
 Populate the `.env` file according to the `.env.example` file. Once done, run `pnpm run dev` to start the development server.
 
 ```bash
@@ -61,10 +69,6 @@ If you wish to use a local database, we provide a docker file for local postgres
 ```bash
 ./start-database.sh
 ```
-
-If you encounter errors with prisma, run `pnpm run db:push` from the root directory of your app. This command will sync your Prisma schema with your database and will generate the TypeScript types for the Prisma Client based on your schema.
-
-> Note that you need to restart the TypeScript server after doing this so that it can detect the generated types.
 
 ## Editor Setup
 
