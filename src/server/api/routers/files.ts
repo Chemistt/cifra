@@ -273,7 +273,7 @@ export const filesRouter = createTRPCRouter({
           },
           take: 50, // Limit results for performance
         }),
-      ]);      // Get folder paths for context
+      ]); // Get folder paths for context
       const getFolderPath = async (folderId: string): Promise<string[]> => {
         const folder = await ctx.db.folder.findUnique({
           where: { id: folderId },
@@ -334,10 +334,51 @@ export const filesRouter = createTRPCRouter({
         if (aExact && !bExact) return -1;
         if (!aExact && bExact) return 1;
 
-        // Then by name
+        // Secondly by name
         return a.name.localeCompare(b.name);
       });
 
       return results;
+    }),
+  renameFile: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        newName: z.string().min(1, "File name cannot be empty"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { fileId, newName } = input;
+
+      // First, verify the file belongs to the user
+      const existingFile = await ctx.db.file.findFirst({
+        where: {
+          id: fileId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!existingFile) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission to edit it",
+        });
+      }
+
+      // Update the file name
+      const updatedFile = await ctx.db.file.update({
+        where: {
+          id: fileId,
+        },
+        data: {
+          name: newName,
+          updatedAt: new Date(),
+        },
+      });
+
+      return updatedFile;
     }),
 });
