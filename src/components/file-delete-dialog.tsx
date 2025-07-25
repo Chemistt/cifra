@@ -2,6 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,12 +36,12 @@ export function FileDeleteDialog({
   const deleteFileMutation = useMutation(
     trpc.files.deleteFile.mutationOptions({
       onSuccess: () => {
-        console.log(`File "${fileName}" deleted successfully.`);
+        toast.success(`File "${fileName}" deleted successfully.`);
         onFileDeleted?.();
         onOpenChange(false); // Close the dialog
       },
       onError: (error) => {
-        console.error("Error deleting file:", error);
+        toast.error(`Failed to delete file: ${error.message}`);
       },
     }),
   );
@@ -50,7 +51,11 @@ export function FileDeleteDialog({
       setIsDeleting(true);
       await deleteFileMutation.mutateAsync({ id: fileId });
     } catch (error) {
-      console.error("Error deleting file:", error);
+      if (error instanceof Error) {
+        toast.error(`Failed to delete file: ${error.message}`);
+      } else {
+        toast.error("Failed to delete file: Unknown error");
+      }
     } finally {
       setIsDeleting(false);
     }
