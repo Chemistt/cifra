@@ -10,6 +10,7 @@ export function SignOutButton() {
   const router = useRouter();
   return (
     <Button
+      className="cursor-pointer"
       onClick={() =>
         void signOut({
           fetchOptions: {

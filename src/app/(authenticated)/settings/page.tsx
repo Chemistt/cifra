@@ -1,7 +1,8 @@
 // import { authClient } from "@/lib/auth-client";
-import { BotIcon, UserIcon } from "lucide-react";
+import { BotIcon, KeyIcon, UserIcon } from "lucide-react";
 
 import { AccountForm } from "@/components/settings-acount-form";
+import { SettingsKeyManagement } from "@/components/settings-key-management";
 import { SettingsPasskey } from "@/components/settings-passkey";
 // import { SettingsTOTP } from "@/components/settings-totp";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,6 +13,7 @@ export default function SettingsPage() {
 
   prefetch(api.passkey.getPasskeys.queryOptions());
   prefetch(api.profile.getProfile.queryOptions());
+  prefetch(api.kms.getKeys.queryOptions());
 
   return (
     <HydrateClient>
@@ -54,6 +56,17 @@ export default function SettingsPage() {
             />
             TOTP
           </TabsTrigger>
+          <TabsTrigger
+            value="tab-4"
+            className="hover:bg-accent hover:text-foreground data-[state=active]:after:bg-primary data-[state=active]:hover:bg-accent relative w-full justify-start after:absolute after:inset-y-0 after:start-0 after:-ms-1 after:w-0.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            <KeyIcon
+              className="-ms-0.5 me-1.5 opacity-60"
+              size={16}
+              aria-hidden="true"
+            />
+            Keys
+          </TabsTrigger>
         </TabsList>
         <div className="grow rounded-md text-start">
           <TabsContent value="tab-1">
@@ -64,6 +77,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="tab-3">
             <p>Work in progress</p>
+          </TabsContent>
+          <TabsContent value="tab-4">
+            <SettingsKeyManagement />
           </TabsContent>
         </div>
       </Tabs>

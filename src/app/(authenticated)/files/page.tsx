@@ -1,10 +1,10 @@
-/* eslint-disable unicorn/no-null */
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
   DownloadIcon,
+  EditIcon,
   FolderIcon,
   HomeIcon,
   LockIcon,
@@ -15,6 +15,7 @@ import {
   UploadIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
@@ -30,6 +31,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -39,23 +46,37 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { env } from "@/env";
+import { formatDate } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
 
-// Infer types from your tRPC router for full type safety
+// Infering types from tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type FolderItem = RouterOutput["files"]["getFolderContents"][number];
-type BreadcrumbData = { id: string | null; name: string };
+type SearchResult = RouterOutput["files"]["searchFiles"][number];
+type BreadcrumbData = { id: string | undefined; name: string };
 
 // Type guards for discriminated union
 const isFolder = (
-  item: FolderItem,
-): item is FolderItem & { type: "folder" } => {
+  item: FolderItem | SearchResult,
+): item is (FolderItem | SearchResult) & { type: "folder" } => {
   return item.type === "folder";
 };
 
-const isFile = (item: FolderItem): item is FolderItem & { type: "file" } => {
+const isFile = (
+  item: FolderItem | SearchResult,
+): item is (FolderItem | SearchResult) & { type: "file" } => {
   return item.type === "file";
+};
+
+// Helper function to check if item has path info (search result)
+const hasPathInfo = (item: FolderItem | SearchResult): item is SearchResult =>
+  "path" in item && Array.isArray(item.path);
+
+// Helper function to format path for display
+const formatPathDisplay = (path: string[]) => {
+  if (path.length === 0) return "Root";
+  return path.join(" / ");
 };
 
 // Utility functions
@@ -74,16 +95,6 @@ const getFileIcon = (mimeType: string) => {
   if (mimeType.startsWith("video/")) return "🎥";
   if (mimeType.startsWith("audio/")) return "🎵";
   return "📄";
-};
-
-const formatDate = (date: Date): string => {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
 };
 
 // TODO: Populate it trpc instead?
@@ -120,18 +131,19 @@ function LoadingView() {
   );
 }
 
-// Grid view component
-type GridViewProps = {
-  foldersToRender: FolderItem[];
-  filesToRender: FolderItem[];
+type ViewProps = {
+  foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
+  filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
+  startRenaming: (file: { id: string; name: string }) => void;
 };
 
 function GridView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
-}: GridViewProps) {
+  startRenaming,
+}: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
@@ -158,6 +170,11 @@ function GridView({
                   <p className="text-muted-foreground text-sm">
                     {formatDate(folder.updatedAt)}
                   </p>
+                  {hasPathInfo(folder) && folder.path.length > 0 && (
+                    <p className="text-muted-foreground text-xs italic">
+                      📁 {formatPathDisplay(folder.path)}
+                    </p>
+                  )}
                   {folder.tags.length > 0 && (
                     <div className="mt-1 flex gap-1">
                       {folder.tags.slice(0, 2).map((tag) => (
@@ -202,6 +219,11 @@ function GridView({
                   <p className="text-muted-foreground text-xs">
                     {formatDate(item.updatedAt)}
                   </p>
+                  {hasPathInfo(item) && item.path.length > 0 && (
+                    <p className="text-muted-foreground text-xs italic">
+                      📁 {formatPathDisplay(item.path)}
+                    </p>
+                  )}
                   {item.tags.length > 0 && (
                     <div className="mt-1 flex gap-1">
                       {item.tags.slice(0, 2).map((tag) => (
@@ -230,6 +252,14 @@ function GridView({
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       onClick={() => {
+                        startRenaming(item);
+                      }}
+                    >
+                      <EditIcon className="mr-2 h-4 w-4" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
                         handleDownload(item);
                       }}
                     >
@@ -245,24 +275,18 @@ function GridView({
               </div>
             </CardContent>
           </Card>
-        ) : null,
+        ) : undefined,
       )}
     </div>
   );
 }
 
-// List view component
-type ListViewProps = {
-  foldersToRender: FolderItem[];
-  filesToRender: FolderItem[];
-  navigateToFolder: (folder: { id: string; name: string }) => void;
-};
-
 function ListView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
-}: ListViewProps) {
+  startRenaming,
+}: ViewProps) {
   return (
     <div className="space-y-2">
       {/* Folders */}
@@ -284,6 +308,11 @@ function ListView({
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="font-medium">{folder.name}</h4>
+              {hasPathInfo(folder) && folder.path.length > 0 && (
+                <p className="text-muted-foreground text-xs italic">
+                  📁 {formatPathDisplay(folder.path)}
+                </p>
+              )}
             </div>
             <div className="text-muted-foreground flex items-center gap-4 text-sm">
               <span>{formatDate(folder.updatedAt)}</span>
@@ -319,6 +348,11 @@ function ListView({
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="font-medium">{file.name}</h4>
+              {hasPathInfo(file) && file.path.length > 0 && (
+                <p className="text-muted-foreground text-xs italic">
+                  📁 {formatPathDisplay(file.path)}
+                </p>
+              )}
             </div>
             <div className="text-muted-foreground flex items-center gap-4 text-sm">
               <span>{formatDate(file.updatedAt)}</span>
@@ -342,6 +376,14 @@ function ListView({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => {
+                    startRenaming(file);
+                  }}
+                >
+                  <EditIcon className="mr-2 h-4 w-4" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
                     handleDownload(file);
                   }}
                 >
@@ -360,12 +402,7 @@ function ListView({
   );
 }
 
-// Empty state component
-type EmptyStateProps = {
-  searchQuery: string;
-};
-
-function EmptyState({ searchQuery }: EmptyStateProps) {
+function EmptyState({ searchQuery }: { searchQuery: string }) {
   return (
     <div className="py-12 text-center">
       <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
@@ -382,23 +419,50 @@ function EmptyState({ searchQuery }: EmptyStateProps) {
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
-    { id: null, name: "My Files" },
+    { id: undefined, name: "My Files" },
   ]);
+
+  const [renameState, setRenameState] = useState<{
+    file: { id: string; name: string } | undefined;
+    newName: string;
+    isOpen: boolean;
+  }>({
+    file: undefined,
+    newName: "",
+    isOpen: false,
+  });
 
   // tRPC Queries
   const {
     data: folderContents,
-    isLoading,
+    isLoading: isFolderLoading,
     refetch,
   } = useQuery(
     trpc.files.getFolderContents.queryOptions({
       folderId: currentFolderId ?? undefined,
     }),
   );
+
+  // Search query - only execute if searchQuery is not empty
+  const { data: searchResults, isLoading: isSearchLoading } = useQuery({
+    ...trpc.files.searchFiles.queryOptions({
+      query: searchQuery,
+    }),
+    enabled: searchQuery.trim().length > 0, // Only run if there's a search query
+  });
+
+  // Determine which data to use
+  const isLoading =
+    searchQuery.trim().length > 0 ? isSearchLoading : isFolderLoading;
+  const dataToRender = useMemo(() => {
+    return searchQuery.trim().length > 0
+      ? (searchResults ?? [])
+      : (folderContents ?? []);
+  }, [searchQuery, searchResults, folderContents]);
 
   // Refresh function for after upload
   const handleUploadComplete = () => {
@@ -408,6 +472,50 @@ export default function FilesPage() {
   // Refresh function for after folder creation
   const handleFolderCreated = () => {
     void refetch();
+  };
+
+  // Rename file mutation
+  const renameFileMutation = useMutation(
+    trpc.files.renameFile.mutationOptions({
+      onSuccess: () => {
+        toast.success("File renamed successfully");
+        setRenameState({
+          file: undefined,
+          newName: "",
+          isOpen: false,
+        });
+        void refetch();
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+
+  // Rename file handlers
+  const startRenaming = (file: { id: string; name: string }) => {
+    setRenameState({
+      file,
+      newName: file.name,
+      isOpen: true,
+    });
+  };
+
+  const handleRename = () => {
+    if (!renameState.file || !renameState.newName.trim()) return;
+
+    renameFileMutation.mutate({
+      fileId: renameState.file.id,
+      newName: renameState.newName.trim(),
+    });
+  };
+
+  const cancelRename = () => {
+    setRenameState({
+      file: undefined,
+      newName: "",
+      isOpen: false,
+    });
   };
 
   // Navigation functions
@@ -420,22 +528,18 @@ export default function FilesPage() {
     const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
     setBreadcrumbs(newBreadcrumbs);
     const targetFolder = newBreadcrumbs.at(-1);
-    setCurrentFolderId(targetFolder?.id ?? null);
+    setCurrentFolderId(targetFolder?.id);
   };
 
   // Filter data based on search
   const filteredItems = useMemo(() => {
-    if (!folderContents) return [];
-    if (!searchQuery) return folderContents;
-    return folderContents.filter((item) =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-  }, [folderContents, searchQuery]);
+    return dataToRender;
+  }, [dataToRender]);
 
   // Separate filtered items into folders and files for rendering
   const { foldersToRender, filesToRender } = useMemo(() => {
-    const folders: FolderItem[] = [];
-    const files: FolderItem[] = [];
+    const folders: ((FolderItem | SearchResult) & { type: "folder" })[] = [];
+    const files: ((FolderItem | SearchResult) & { type: "file" })[] = [];
     for (const item of filteredItems) {
       if (isFolder(item)) {
         folders.push(item);
@@ -463,6 +567,7 @@ export default function FilesPage() {
           foldersToRender={foldersToRender}
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
+          startRenaming={startRenaming}
         />
       );
     }
@@ -472,6 +577,7 @@ export default function FilesPage() {
         foldersToRender={foldersToRender}
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
+        startRenaming={startRenaming}
       />
     );
   };
@@ -595,6 +701,63 @@ export default function FilesPage() {
           {renderContent()}
         </CardContent>
       </Card>
+
+      {/* Rename File Dialog */}
+      <Dialog
+        open={!!renameState.file}
+        onOpenChange={() => {
+          if (renameState.file) {
+            cancelRename();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename File</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="fileName" className="text-sm font-medium">
+                File Name
+              </label>
+              <input
+                id="fileName"
+                type="text"
+                value={renameState.newName}
+                onChange={(event) => {
+                  setRenameState({
+                    ...renameState,
+                    newName: event.target.value,
+                  });
+                }}
+                className="mt-1 w-full rounded border p-2"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    handleRename();
+                  } else if (event.key === "Escape") {
+                    cancelRename();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={cancelRename}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleRename}
+                disabled={
+                  !renameState.newName.trim() ||
+                  renameState.newName === renameState.file?.name
+                }
+              >
+                Rename
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
