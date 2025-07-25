@@ -7,6 +7,7 @@ import {
   EditIcon,
   FolderIcon,
   HomeIcon,
+  InfoIcon,
   LockIcon,
   MoreVerticalIcon,
   PlusIcon,
@@ -20,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
+import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { GlobalDropzone } from "@/components/global-dropzone";
@@ -118,18 +120,21 @@ type ViewProps = {
   navigateToFolder: (folder: { id: string; name: string }) => void;
   startRenaming: (file: { id: string; name: string }) => void;
   onDeleteFile: (fileId: string) => void;
+  onShowMetadata: (fileId: string) => void;
 };
 
 type FileActionsDropdownProps = {
   file: FolderContents["files"][number] | SearchContents["files"][number];
   startRenaming: (file: { id: string; name: string }) => void;
   onDeleteFile: (fileId: string) => void;
+  onShowMetadata: (fileId: string) => void;
 };
 
 function FileActionsDropdown({
   file,
   startRenaming,
   onDeleteFile,
+  onShowMetadata,
 }: FileActionsDropdownProps) {
   return (
     <DropdownMenu>
@@ -146,6 +151,14 @@ function FileActionsDropdown({
         >
           <EditIcon className="mr-2 h-4 w-4" />
           Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            onShowMetadata(file.id);
+          }}
+        >
+          <InfoIcon className="mr-2 h-4 w-4" />
+          Info
         </DropdownMenuItem>
         {file.encryptedDeks.length > 0 ? (
           <EncryptedFileDownload file={file}>
@@ -187,6 +200,7 @@ function GridView({
   navigateToFolder,
   startRenaming,
   onDeleteFile,
+  onShowMetadata,
 }: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -288,6 +302,7 @@ function GridView({
                 file={files}
                 startRenaming={startRenaming}
                 onDeleteFile={onDeleteFile}
+                onShowMetadata={onShowMetadata}
               />
             </div>
           </CardContent>
@@ -303,6 +318,7 @@ function ListView({
   navigateToFolder,
   startRenaming,
   onDeleteFile,
+  onShowMetadata,
 }: ViewProps) {
   return (
     <div className="space-y-2">
@@ -384,6 +400,7 @@ function ListView({
             file={file}
             startRenaming={startRenaming}
             onDeleteFile={onDeleteFile}
+            onShowMetadata={onShowMetadata}
           />
         </div>
       ))}
@@ -422,6 +439,10 @@ export default function FilesPage() {
 
   const [renameDialogFile, setRenameDialogFile] = useState<
     { id: string; name: string } | undefined
+  >();
+
+  const [metadataDrawerFileId, setMetadataDrawerFileId] = useState<
+    string | undefined
   >();
 
   // Debounce search query
@@ -473,6 +494,11 @@ export default function FilesPage() {
     setRenameDialogFile(file);
   };
 
+  // Show metadata handlers
+  const showMetadata = (fileId: string) => {
+    setMetadataDrawerFileId(fileId);
+  };
+
   // Navigation functions
   const navigateToFolder = (folder: { id: string; name: string }) => {
     setCurrentFolderId(folder.id);
@@ -505,6 +531,7 @@ export default function FilesPage() {
           navigateToFolder={navigateToFolder}
           startRenaming={startRenaming}
           onDeleteFile={setDeleteDialogFileId}
+          onShowMetadata={showMetadata}
         />
       );
     }
@@ -516,6 +543,7 @@ export default function FilesPage() {
         navigateToFolder={navigateToFolder}
         startRenaming={startRenaming}
         onDeleteFile={setDeleteDialogFileId}
+        onShowMetadata={showMetadata}
       />
     );
   };
@@ -663,6 +691,17 @@ export default function FilesPage() {
             }}
             onFileRenamed={() => {
               setRenameDialogFile(undefined);
+            }}
+          />
+        )}
+
+        {/* File Metadata Drawer */}
+        {metadataDrawerFileId && (
+          <FileMetadataDrawer
+            fileId={metadataDrawerFileId}
+            open={!!metadataDrawerFileId}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setMetadataDrawerFileId(undefined);
             }}
           />
         )}

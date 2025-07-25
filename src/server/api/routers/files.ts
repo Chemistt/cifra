@@ -661,4 +661,129 @@ export const filesRouter = createTRPCRouter({
         });
       }
     }),
+  getFileMetadata: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { fileId } = input;
+
+      // Fetch comprehensive file metadata
+      const file = await ctx.db.file.findFirst({
+        where: {
+          id: fileId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          folder: {
+            select: {
+              id: true,
+              name: true,
+              parentId: true,
+            },
+          },
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+          encryptedDeks: {
+            include: {
+              kekUsed: {
+                select: {
+                  id: true,
+                  alias: true,
+                  keyIdentifierInKMS: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+          sharedFiles: {
+            select: {
+              id: true,
+              folderPath: true,
+              uploadedById: true,
+            },
+          },
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission to view it",
+        });
+      }
+
+      // Get full folder path
+      const getFolderPath = async (folderId: string): Promise<string[]> => {
+        const folder = await ctx.db.folder.findUnique({
+          where: { id: folderId },
+          select: { name: true, parentId: true },
+        });
+
+        if (!folder?.parentId) {
+          return folder?.name ? [folder.name] : [];
+        }
+
+        const parentPath = await getFolderPath(folder.parentId);
+        return [...parentPath, folder.name];
+      };
+
+      const folderPath = await getFolderPath(file.folderId);
+
+      // Format file size
+      const fileSizeFormatted = formatFileSize(file.size);
+
+      return {
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        sizeFormatted: fileSizeFormatted,
+        mimeType: file.mimeType,
+        storagePath: file.storagePath,
+        md5: file.md5,
+        version: file.version,
+        passwordProtected: !!file.passwordHash,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+        deletedAt: file.deletedAt,
+        owner: file.owner,
+        folder: file.folder,
+        folderPath,
+        tags: file.tags.map((tagRelation) => tagRelation.tag),
+        encryptionKeys: file.encryptedDeks,
+        sharedFiles: file.sharedFiles,
+        // Additional calculated metadata
+        isImage: file.mimeType.startsWith("image/"),
+        isVideo: file.mimeType.startsWith("video/"),
+        isAudio: file.mimeType.startsWith("audio/"),
+        isPDF: file.mimeType.includes("pdf"),
+        isDocument:
+          file.mimeType.includes("document") || file.mimeType.includes("word"),
+        fileExtension: file.name.split(".").pop()?.toLowerCase() ?? "",
+      };
+    }),
 });
+
+// Helper function for file size formatting
+function formatFileSize(bytes: bigint): string {
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  if (bytes === BigInt(0)) return "0 Bytes";
+  const k = 1024;
+  const index = Math.floor(Math.log(Number(bytes)) / Math.log(k));
+  return `${String(Math.round((Number(bytes) / Math.pow(k, index)) * 100) / 100)} ${String(sizes[index])}`;
+}
