@@ -1,12 +1,17 @@
+/* eslint-disable unicorn/no-null */
+/* eslint-disable simple-import-sort/imports */
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+
 import type { inferRouterOutputs } from "@trpc/server";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   DownloadIcon,
   EditIcon,
   FolderIcon,
   HomeIcon,
+  InfoIcon,
   LockIcon,
   MoreVerticalIcon,
   PlusIcon,
@@ -14,10 +19,10 @@ import {
   ShareIcon,
   UploadIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { FileUploadDialog } from "@/components/file-upload-dialog";
+import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,7 +51,6 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { env } from "@/env";
-import { formatDate } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
 
@@ -54,7 +58,7 @@ import { useTRPC } from "@/trpc/react";
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type FolderItem = RouterOutput["files"]["getFolderContents"][number];
 type SearchResult = RouterOutput["files"]["searchFiles"][number];
-type BreadcrumbData = { id: string | undefined; name: string };
+type BreadcrumbData = { id: string | null; name: string };
 
 // Type guards for discriminated union
 const isFolder = (
@@ -97,6 +101,16 @@ const getFileIcon = (mimeType: string) => {
   return "📄";
 };
 
+const formatDate = (date: Date): string => {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
 // TODO: Populate it trpc instead?
 const getFileUrl = (storagePath: string): string => {
   return `https://${env.NEXT_PUBLIC_UPLOADTHING_APPID}.ufs.sh/f/${storagePath}`;
@@ -131,11 +145,13 @@ function LoadingView() {
   );
 }
 
-type ViewProps = {
+// Grid view component
+type GridViewProps = {
   foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
   filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
   startRenaming: (file: { id: string; name: string }) => void;
+  showFileMetadata: (fileId: string) => void;
 };
 
 function GridView({
@@ -143,7 +159,8 @@ function GridView({
   filesToRender,
   navigateToFolder,
   startRenaming,
-}: ViewProps) {
+  showFileMetadata,
+}: GridViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
@@ -270,23 +287,41 @@ function GridView({
                       <ShareIcon className="mr-2 h-4 w-4" />
                       Share
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        showFileMetadata(item.id);
+                      }}
+                    >
+                      <InfoIcon className="mr-2 h-4 w-4" />
+                      View Metadata
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             </CardContent>
           </Card>
-        ) : undefined,
+        ) : null,
       )}
     </div>
   );
 }
+
+// List view component
+type ListViewProps = {
+  foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
+  filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
+  navigateToFolder: (folder: { id: string; name: string }) => void;
+  startRenaming: (file: { id: string; name: string }) => void;
+  showFileMetadata: (fileId: string) => void;
+};
 
 function ListView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
   startRenaming,
-}: ViewProps) {
+  showFileMetadata,
+}: ListViewProps) {
   return (
     <div className="space-y-2">
       {/* Folders */}
@@ -394,6 +429,14 @@ function ListView({
                   <ShareIcon className="mr-2 h-4 w-4" />
                   Share
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    showFileMetadata(file.id);
+                  }}
+                >
+                  <InfoIcon className="mr-2 h-4 w-4" />
+                  View Metadata
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -402,7 +445,12 @@ function ListView({
   );
 }
 
-function EmptyState({ searchQuery }: { searchQuery: string }) {
+// Empty state component
+type EmptyStateProps = {
+  searchQuery: string;
+};
+
+function EmptyState({ searchQuery }: EmptyStateProps) {
   return (
     <div className="py-12 text-center">
       <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
@@ -419,20 +467,26 @@ function EmptyState({ searchQuery }: { searchQuery: string }) {
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
-  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
-    { id: undefined, name: "My Files" },
+    { id: null, name: "My Files" },
   ]);
 
-  const [renameState, setRenameState] = useState<{
-    file: { id: string; name: string } | undefined;
-    newName: string;
+  // Rename file state
+  const [editingFile, setEditingFile] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [newFileName, setNewFileName] = useState("");
+
+  // Metadata drawer state
+  const [metadataDrawer, setMetadataDrawer] = useState<{
+    fileId: string | undefined;
     isOpen: boolean;
   }>({
-    file: undefined,
-    newName: "",
+    fileId: undefined,
     isOpen: false,
   });
 
@@ -479,11 +533,8 @@ export default function FilesPage() {
     trpc.files.renameFile.mutationOptions({
       onSuccess: () => {
         toast.success("File renamed successfully");
-        setRenameState({
-          file: undefined,
-          newName: "",
-          isOpen: false,
-        });
+        setEditingFile(null);
+        setNewFileName("");
         void refetch();
       },
       onError: (error) => {
@@ -494,26 +545,37 @@ export default function FilesPage() {
 
   // Rename file handlers
   const startRenaming = (file: { id: string; name: string }) => {
-    setRenameState({
-      file,
-      newName: file.name,
-      isOpen: true,
-    });
+    setEditingFile(file);
+    setNewFileName(file.name);
   };
 
   const handleRename = () => {
-    if (!renameState.file || !renameState.newName.trim()) return;
+    if (!editingFile || !newFileName.trim()) return;
 
     renameFileMutation.mutate({
-      fileId: renameState.file.id,
-      newName: renameState.newName.trim(),
+      fileId: editingFile.id,
+      newName: newFileName.trim(),
     });
   };
 
   const cancelRename = () => {
-    setRenameState({
-      file: undefined,
-      newName: "",
+    setEditingFile(null);
+    setNewFileName("");
+  };
+
+  // Metadata drawer handlers
+  const showFileMetadata = (fileId: string) => {
+    console.log("showFileMetadata called with fileId:", fileId);
+    setMetadataDrawer({
+      fileId,
+      isOpen: true,
+    });
+  };
+
+  const closeMetadataDrawer = () => {
+    console.log("closeMetadataDrawer called");
+    setMetadataDrawer({
+      fileId: undefined,
       isOpen: false,
     });
   };
@@ -528,7 +590,7 @@ export default function FilesPage() {
     const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
     setBreadcrumbs(newBreadcrumbs);
     const targetFolder = newBreadcrumbs.at(-1);
-    setCurrentFolderId(targetFolder?.id);
+    setCurrentFolderId(targetFolder?.id ?? null);
   };
 
   // Filter data based on search
@@ -568,6 +630,7 @@ export default function FilesPage() {
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
           startRenaming={startRenaming}
+          showFileMetadata={showFileMetadata}
         />
       );
     }
@@ -578,6 +641,7 @@ export default function FilesPage() {
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
         startRenaming={startRenaming}
+        showFileMetadata={showFileMetadata}
       />
     );
   };
@@ -704,9 +768,9 @@ export default function FilesPage() {
 
       {/* Rename File Dialog */}
       <Dialog
-        open={!!renameState.file}
+        open={editingFile !== null}
         onOpenChange={() => {
-          if (renameState.file) {
+          if (editingFile) {
             cancelRename();
           }
         }}
@@ -723,12 +787,9 @@ export default function FilesPage() {
               <input
                 id="fileName"
                 type="text"
-                value={renameState.newName}
+                value={newFileName}
                 onChange={(event) => {
-                  setRenameState({
-                    ...renameState,
-                    newName: event.target.value,
-                  });
+                  setNewFileName(event.target.value);
                 }}
                 className="mt-1 w-full rounded border p-2"
                 onKeyDown={(event) => {
@@ -748,8 +809,7 @@ export default function FilesPage() {
               <Button
                 onClick={handleRename}
                 disabled={
-                  !renameState.newName.trim() ||
-                  renameState.newName === renameState.file?.name
+                  !newFileName.trim() || newFileName === editingFile?.name
                 }
               >
                 Rename
@@ -758,6 +818,18 @@ export default function FilesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* File Metadata Drawer */}
+      <FileMetadataDrawer
+        fileId={metadataDrawer.fileId}
+        open={metadataDrawer.isOpen}
+        onOpenChange={(open) => {
+          console.log("FileMetadataDrawer onOpenChange:", open);
+          if (!open) {
+            closeMetadataDrawer();
+          }
+        }}
+      />
     </div>
   );
 }
