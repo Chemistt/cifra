@@ -12,6 +12,7 @@ import {
   PlusIcon,
   SearchIcon,
   ShareIcon,
+  Trash2Icon,
   UploadIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -19,6 +20,7 @@ import { toast } from "sonner";
 
 import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
+import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -136,6 +138,7 @@ type ViewProps = {
   filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
   startRenaming: (file: { id: string; name: string }) => void;
+  refetch: () => void; // Function to refetch data after deletion
 };
 
 function GridView({
@@ -143,7 +146,11 @@ function GridView({
   filesToRender,
   navigateToFolder,
   startRenaming,
+  refetch,
 }: ViewProps) {
+  const [deleteDialogFileId, setDeleteDialogFileId] = useState<string | null>(
+    null,
+  );
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
@@ -270,6 +277,14 @@ function GridView({
                       <ShareIcon className="mr-2 h-4 w-4" />
                       Share
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setDeleteDialogFileId(item.id); // Open the dialog for this file
+                      }}
+                    >
+                      <Trash2Icon className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -277,16 +292,60 @@ function GridView({
           </Card>
         ) : undefined,
       )}
+      {deleteDialogFileId && (
+        <FileDeleteDialog
+          fileId={deleteDialogFileId}
+          fileName={
+            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
+          }
+          open={!!deleteDialogFileId} // Control open state
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setDeleteDialogFileId(null); // Close the dialog
+          }}
+          onFileDeleted={() => {
+            void refetch();
+            setDeleteDialogFileId(null); // Close the dialog
+          }}
+        />
+      )}
+      {deleteDialogFileId && (
+        <FileDeleteDialog
+          fileId={deleteDialogFileId}
+          fileName={
+            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
+          }
+          open={!!deleteDialogFileId} // Control open state
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setDeleteDialogFileId(null); // Close the dialog
+          }}
+          onFileDeleted={() => {
+            void refetch();
+            setDeleteDialogFileId(null); // Close the dialog
+          }}
+        />
+      )}
     </div>
   );
 }
+
+// List view component
+type ListViewProps = {
+  foldersToRender: FolderItem[];
+  filesToRender: FolderItem[];
+  navigateToFolder: (folder: { id: string; name: string }) => void;
+  refetch: () => void; // Function to refetch data after deletion
+};
 
 function ListView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
   startRenaming,
+  refetch,
 }: ViewProps) {
+  const [deleteDialogFileId, setDeleteDialogFileId] = useState<string | null>(
+    null,
+  );
   return (
     <div className="space-y-2">
       {/* Folders */}
@@ -394,10 +453,34 @@ function ListView({
                   <ShareIcon className="mr-2 h-4 w-4" />
                   Share
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setDeleteDialogFileId(file.id); // Open the dialog for this file
+                  }}
+                >
+                  <Trash2Icon className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         ))}
+      {deleteDialogFileId && (
+        <FileDeleteDialog
+          fileId={deleteDialogFileId}
+          fileName={
+            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
+          }
+          open={!!deleteDialogFileId} // Control open state
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setDeleteDialogFileId(null); // Close the dialog
+          }}
+          onFileDeleted={() => {
+            void refetch();
+            setDeleteDialogFileId(null); // Close the dialog
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -568,6 +651,7 @@ export default function FilesPage() {
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
           startRenaming={startRenaming}
+          refetch={refetch}
         />
       );
     }
@@ -578,6 +662,7 @@ export default function FilesPage() {
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
         startRenaming={startRenaming}
+        refetch={refetch}
       />
     );
   };
