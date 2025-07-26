@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -29,11 +28,9 @@ export function FileDeleteDialog({
   open,
   onOpenChange,
 }: FileDeleteDialogProps) {
-  const [isDeleting, setIsDeleting] = useState(false);
-
   const trpc = useTRPC();
 
-  const deleteFileMutation = useMutation(
+  const { mutate, isPending } = useMutation(
     trpc.files.deleteFile.mutationOptions({
       onSuccess: () => {
         toast.success(`File "${fileName}" deleted successfully.`);
@@ -46,21 +43,6 @@ export function FileDeleteDialog({
     }),
   );
 
-  const handleDelete = async () => {
-    try {
-      setIsDeleting(true);
-      await deleteFileMutation.mutateAsync({ id: fileId });
-    } catch (error) {
-      if (error instanceof Error) {
-        toast.error(`Failed to delete file: ${error.message}`);
-      } else {
-        toast.error("Failed to delete file: Unknown error");
-      }
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -69,7 +51,7 @@ export function FileDeleteDialog({
           <DialogDescription>
             Are you sure you want to delete{" "}
             <span className="font-medium">{fileName}</span>?<br />
-            This action will move the file to trash and can be undone later.
+            This action will move the file to &quot;Recently Deleted&quot; folder and can be undone later.
           </DialogDescription>
         </DialogHeader>
         <div className="flex justify-end gap-2">
@@ -78,18 +60,18 @@ export function FileDeleteDialog({
             onClick={() => {
               onOpenChange(false);
             }}
-            disabled={isDeleting}
+            disabled={isPending}
           >
             Cancel
           </Button>
           <Button
             variant="destructive"
             onClick={() => {
-              void handleDelete();
+              mutate({ id: fileId });
             }}
-            disabled={isDeleting}
+            disabled={isPending}
           >
-            {isDeleting ? "Deleting..." : "Delete"}
+            {isPending ? "Deleting..." : "Delete"}
           </Button>
         </div>
       </DialogContent>
