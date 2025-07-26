@@ -18,9 +18,9 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
-import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -148,9 +148,9 @@ function GridView({
   startRenaming,
   refetch,
 }: ViewProps) {
-  const [deleteDialogFileId, setDeleteDialogFileId] = useState<string | null>(
-    null,
-  );
+  const [deleteDialogFileId, setDeleteDialogFileId] = useState<
+    string | undefined
+  >();
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
@@ -300,11 +300,11 @@ function GridView({
           }
           open={!!deleteDialogFileId} // Control open state
           onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(null); // Close the dialog
+            if (!isOpen) setDeleteDialogFileId(undefined); // Close the dialog
           }}
           onFileDeleted={() => {
-            void refetch();
-            setDeleteDialogFileId(null); // Close the dialog
+            refetch();
+            setDeleteDialogFileId(undefined); // Close the dialog
           }}
         />
       )}
@@ -316,25 +316,17 @@ function GridView({
           }
           open={!!deleteDialogFileId} // Control open state
           onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(null); // Close the dialog
+            if (!isOpen) setDeleteDialogFileId(undefined); // Close the dialog
           }}
           onFileDeleted={() => {
-            void refetch();
-            setDeleteDialogFileId(null); // Close the dialog
+            refetch();
+            setDeleteDialogFileId(undefined); // Close the dialog
           }}
         />
       )}
     </div>
   );
 }
-
-// List view component
-type ListViewProps = {
-  foldersToRender: FolderItem[];
-  filesToRender: FolderItem[];
-  navigateToFolder: (folder: { id: string; name: string }) => void;
-  refetch: () => void; // Function to refetch data after deletion
-};
 
 function ListView({
   foldersToRender,
@@ -343,9 +335,9 @@ function ListView({
   startRenaming,
   refetch,
 }: ViewProps) {
-  const [deleteDialogFileId, setDeleteDialogFileId] = useState<string | null>(
-    null,
-  );
+  const [deleteDialogFileId, setDeleteDialogFileId] = useState<
+    string | undefined
+  >();
   return (
     <div className="space-y-2">
       {/* Folders */}
@@ -473,11 +465,11 @@ function ListView({
           }
           open={!!deleteDialogFileId} // Control open state
           onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(null); // Close the dialog
+            if (!isOpen) setDeleteDialogFileId(undefined); // Close the dialog
           }}
           onFileDeleted={() => {
-            void refetch();
-            setDeleteDialogFileId(null); // Close the dialog
+            refetch();
+            setDeleteDialogFileId(undefined); // Close the dialog
           }}
         />
       )}
@@ -651,7 +643,9 @@ export default function FilesPage() {
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
           startRenaming={startRenaming}
-          refetch={refetch}
+          refetch={() => {
+            void refetch();
+          }}
         />
       );
     }
@@ -662,7 +656,9 @@ export default function FilesPage() {
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
         startRenaming={startRenaming}
-        refetch={refetch}
+        refetch={() => {
+          void refetch();
+        }}
       />
     );
   };

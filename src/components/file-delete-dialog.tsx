@@ -17,7 +17,7 @@ import { useTRPC } from "@/trpc/react";
 type FileDeleteDialogProps = {
   fileId: string;
   fileName: string;
-  onFileDeleted?: () => void;
+  onFileDeleted: () => void;
   open: boolean; // Controlled open state
   onOpenChange: (isOpen: boolean) => void; // Callback to update open state
 };
@@ -37,7 +37,7 @@ export function FileDeleteDialog({
     trpc.files.deleteFile.mutationOptions({
       onSuccess: () => {
         toast.success(`File "${fileName}" deleted successfully.`);
-        onFileDeleted?.();
+        onFileDeleted();
         onOpenChange(false); // Close the dialog
       },
       onError: (error) => {
@@ -75,14 +75,18 @@ export function FileDeleteDialog({
         <div className="flex justify-end gap-2">
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              onOpenChange(false);
+            }}
             disabled={isDeleting}
           >
             Cancel
           </Button>
           <Button
             variant="destructive"
-            onClick={handleDelete}
+            onClick={() => {
+              void handleDelete();
+            }}
             disabled={isDeleting}
           >
             {isDeleting ? "Deleting..." : "Delete"}
