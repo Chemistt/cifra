@@ -19,7 +19,7 @@ import { useMemo, useState } from "react";
 
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
-import { FileUploadDialog } from "@/components/file-upload-dialog";
+import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -569,15 +569,15 @@ export default function FilesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <FileUploadDialog
+          <EncryptedFileUploadDialog
             onUploadComplete={handleUploadComplete}
             folderId={currentFolderId ?? undefined}
           >
             <Button variant="outline">
               <UploadIcon className="mr-2 h-4 w-4" />
-              Upload
+              🔒 Upload
             </Button>
-          </FileUploadDialog>
+          </EncryptedFileUploadDialog>
           <FolderCreateDialog
             onFolderCreated={handleFolderCreated}
             parentId={currentFolderId ?? undefined}

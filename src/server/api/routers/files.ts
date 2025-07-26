@@ -204,6 +204,116 @@ export const filesRouter = createTRPCRouter({
 
       return newFile;
     }),
+
+  createEncryptedFileMetadata: protectedProcedure
+    .input(
+      z.object({
+        name: z.string(),
+        storagePath: z.string(),
+        mimeType: z.string(), // Original MIME type before encryption
+        size: z.number(), // Original size before encryption
+        encryptedSize: z.number(), // Actual encrypted file size
+        md5: z.string().optional(),
+        folderId: z.string().optional(),
+        encryptedDEK: z.string(), // Base64 encoded encrypted DEK from KMS
+        keyId: z.string(), // ID of the UserKey used to encrypt the DEK
+        iv: z.string(), // Base64 encoded IV used for file encryption
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+
+      const {
+        name,
+        storagePath,
+        mimeType,
+        size,
+        encryptedSize,
+        md5,
+        folderId,
+        encryptedDEK,
+        keyId,
+        iv,
+      } = input;
+
+      let folderIdToUse = folderId;
+
+      if (!folderIdToUse) {
+        const rootFolder = await ctx.db.folder.findFirst({
+          where: {
+            ownerId: userId,
+            parentId: null,
+          },
+          select: {
+            id: true,
+          },
+        });
+        if (rootFolder) {
+          folderIdToUse = rootFolder.id;
+        } else {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Root folder not found",
+          });
+        }
+      }
+
+      // Verify the key belongs to the user
+      const userKey = await ctx.db.userKey.findFirst({
+        where: {
+          id: keyId,
+          userId: userId,
+        },
+      });
+
+      if (!userKey) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Encryption key not found",
+        });
+      }
+
+      // Create file and encrypted DEK in a transaction
+      const result = await ctx.db.$transaction(async (tx) => {
+        // Create the file record
+        const newFile = await tx.file.create({
+          data: {
+            name,
+            storagePath,
+            mimeType,
+            size: BigInt(size), // Store original size
+            md5,
+            folderId: folderIdToUse,
+            ownerId: userId,
+          },
+        });
+
+        // Create the encrypted DEK record
+        // Convert base64 string back to Buffer for database storage
+        const encryptedDEKBuffer = Buffer.from(encryptedDEK, "base64");
+        const encryptedDEKRecord = await tx.encryptedDEK.create({
+          data: {
+            dekCiphertext: encryptedDEKBuffer,
+            kekIdUsed: keyId,
+            fileId: newFile.id,
+          },
+        });
+
+        return {
+          file: newFile,
+          encryptedDEK: encryptedDEKRecord,
+          metadata: {
+            iv,
+            encryptedSize,
+            originalSize: size,
+            originalMimeType: mimeType,
+          },
+        };
+      });
+
+      return result;
+    }),
   searchFiles: protectedProcedure
     .input(
       z.object({

@@ -2,6 +2,7 @@ import {
   CreateAliasCommand,
   CreateKeyCommand,
   DeleteAliasCommand,
+  EncryptCommand,
   KeySpec,
   KeyUsageType,
   KMSClient,
@@ -330,5 +331,65 @@ export const kmsRouter = createTRPCRouter({
         totalDEKs,
         key: existingKey,
       };
+    }),
+
+  encryptDEK: protectedProcedure
+    .input(z.string())
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+
+      try {
+        // If no kekId provided, use the primary key
+        const keyToUse = await ctx.db.userKey.findFirst({
+          where: {
+            userId: user.id,
+            isPrimary: true,
+          },
+        });
+
+        if (!keyToUse) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No primary key found. Please create a key first.",
+          });
+        }
+
+        // Convert base64 DEK to buffer for encryption
+        const dekBuffer = Buffer.from(input, "base64");
+
+        // Encrypt the DEK using AWS KMS
+        const encryptCommand = new EncryptCommand({
+          KeyId: keyToUse.keyIdentifierInKMS,
+          Plaintext: dekBuffer,
+        });
+
+        const encryptResponse = await client.send(encryptCommand);
+
+        if (!encryptResponse.CiphertextBlob) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to encrypt DEK",
+          });
+        }
+
+        // Convert encrypted DEK to base64 for transport over tRPC
+        const encryptedDEKBuffer = Buffer.from(encryptResponse.CiphertextBlob);
+        const encryptedDEKBase64 = encryptedDEKBuffer.toString("base64");
+
+        return {
+          encryptedDEK: encryptedDEKBase64,
+          keyId: keyToUse.id,
+          keyIdentifierInKMS: keyToUse.keyIdentifierInKMS,
+        };
+      } catch (error) {
+        console.error("Error encrypting DEK:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to encrypt DEK. Please try again.",
+        });
+      }
     }),
 });

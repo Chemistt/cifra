@@ -21,6 +21,12 @@ export const fileUTRouter = {
     pdf: {
       maxFileSize: "4MB",
     },
+    blob: {
+      /**
+       * For encrypted files (application/octet-stream)
+       */
+      maxFileSize: "4MB",
+    },
   })
     .input(
       z.object({
@@ -50,22 +56,39 @@ export const fileUTRouter = {
           headers: await headers(),
         });
 
-        await caller.files.createFileMetadata({
-          name: file.name,
-          storagePath: file.key,
-          mimeType: file.type,
-          size: file.size,
-          md5: file.fileHash,
-          folderId: metadata.folderId,
-        });
-        console.log("File metadata saved to database for:", file.name);
+        // Check if this is an encrypted file (ends with .encrypted)
+        const isEncryptedFile = file.name.endsWith(".encrypted");
+
+        if (isEncryptedFile) {
+          // For encrypted files, we don't save metadata here
+          // The client will handle metadata creation via the encrypted endpoint
+          console.log(
+            "Encrypted file uploaded, metadata will be handled by client:",
+            file.name,
+          );
+        } else {
+          // Regular unencrypted file handling
+          await caller.files.createFileMetadata({
+            name: file.name,
+            storagePath: file.key,
+            mimeType: file.type,
+            size: file.size,
+            md5: file.fileHash,
+            folderId: metadata.folderId,
+          });
+          console.log("File metadata saved to database for:", file.name);
+        }
       } catch (error) {
         console.error("Failed to save file metadata:", error);
         // Continue execution even if metadata save fails
       }
 
       // !!! Whatever is returned here is sent to the clientside `onClientUploadComplete` callback
-      return { uploadedBy: metadata.userId };
+      return {
+        uploadedBy: metadata.userId,
+        key: file.key,
+        url: file.ufsUrl,
+      };
     }),
 } satisfies FileRouter;
 
