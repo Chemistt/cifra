@@ -21,6 +21,7 @@ import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
+import { GlobalDropzone } from "@/components/global-dropzone";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -559,158 +560,163 @@ export default function FilesPage() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Files</h1>
-          <p className="text-muted-foreground">
-            Manage your files and folders securely
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <EncryptedFileUploadDialog
-            onUploadComplete={handleUploadComplete}
-            folderId={currentFolderId ?? undefined}
-          >
-            <Button variant="outline">
-              <UploadIcon className="mr-2 h-4 w-4" />
-              🔒 Upload
-            </Button>
-          </EncryptedFileUploadDialog>
-          <FolderCreateDialog
-            onFolderCreated={handleFolderCreated}
-            parentId={currentFolderId ?? undefined}
-          >
-            <Button>
-              <PlusIcon className="mr-2 h-4 w-4" />
-              New Folder
-            </Button>
-          </FolderCreateDialog>
-        </div>
-      </div>
-
-      {/* Search and Breadcrumbs */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          <div className="relative max-w-md flex-1">
-            <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
-            <Input
-              placeholder="Search files and folders..."
-              value={searchQuery}
-              onChange={(event) => {
-                setSearchQuery(event.target.value);
-              }}
-              className="pl-10"
-            />
+    <GlobalDropzone
+      onUploadComplete={handleUploadComplete}
+      folderId={currentFolderId ?? undefined}
+    >
+      <div className="flex h-full w-full flex-col space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Files</h1>
+            <p className="text-muted-foreground">
+              Manage your files and folders securely
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <EncryptedFileUploadDialog
+              onUploadComplete={handleUploadComplete}
+              folderId={currentFolderId ?? undefined}
+            >
+              <Button variant="outline">
+                <UploadIcon className="mr-2 h-4 w-4" />
+                🔒 Upload
+              </Button>
+            </EncryptedFileUploadDialog>
+            <FolderCreateDialog
+              onFolderCreated={handleFolderCreated}
+              parentId={currentFolderId ?? undefined}
+            >
+              <Button>
+                <PlusIcon className="mr-2 h-4 w-4" />
+                New Folder
+              </Button>
+            </FolderCreateDialog>
           </div>
         </div>
 
-        {/* Breadcrumbs */}
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                onClick={() => {
-                  navigateToBreadcrumb(0);
+        {/* Search and Breadcrumbs */}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <div className="relative max-w-md flex-1">
+              <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform" />
+              <Input
+                placeholder="Search files and folders..."
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
                 }}
-                className="flex cursor-pointer items-center gap-1"
-              >
-                <HomeIcon className="h-4 w-4" />
-                {breadcrumbs[0]?.name}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            {breadcrumbs.slice(1).map((folder, index) => (
-              <div
-                key={folder.id ?? `folder-${String(index)}`}
-                className="flex items-center"
-              >
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  {index === breadcrumbs.length - 2 ? (
-                    <BreadcrumbPage>{folder.name}</BreadcrumbPage>
-                  ) : (
-                    <BreadcrumbLink
-                      onClick={() => {
-                        navigateToBreadcrumb(index + 1);
-                      }}
-                      className="cursor-pointer"
-                    >
-                      {folder.name}
-                    </BreadcrumbLink>
-                  )}
-                </BreadcrumbItem>
-              </div>
-            ))}
-          </BreadcrumbList>
-        </Breadcrumb>
-      </div>
-
-      {/* Main Content */}
-      <Card className="flex flex-1 flex-col overflow-hidden">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>{currentFolderName}</CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant={viewMode === "grid" ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setViewMode("grid");
-                }}
-              >
-                Grid
-              </Button>
-              <Button
-                variant={viewMode === "list" ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setViewMode("list");
-                }}
-              >
-                List
-              </Button>
+                className="pl-10"
+              />
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto">
-          {renderContent()}
-        </CardContent>
-      </Card>
 
-      {/* File Delete Dialog */}
-      {deleteDialogFileId && (
-        <FileDeleteDialog
-          fileId={deleteDialogFileId}
-          fileName={
-            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
-          }
-          open={!!deleteDialogFileId}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(undefined);
-          }}
-          onFileDeleted={() => {
-            void refetch();
-            setDeleteDialogFileId(undefined);
-          }}
-        />
-      )}
+          {/* Breadcrumbs */}
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink
+                  onClick={() => {
+                    navigateToBreadcrumb(0);
+                  }}
+                  className="flex cursor-pointer items-center gap-1"
+                >
+                  <HomeIcon className="h-4 w-4" />
+                  {breadcrumbs[0]?.name}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              {breadcrumbs.slice(1).map((folder, index) => (
+                <div
+                  key={folder.id ?? `folder-${String(index)}`}
+                  className="flex items-center"
+                >
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    {index === breadcrumbs.length - 2 ? (
+                      <BreadcrumbPage>{folder.name}</BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink
+                        onClick={() => {
+                          navigateToBreadcrumb(index + 1);
+                        }}
+                        className="cursor-pointer"
+                      >
+                        {folder.name}
+                      </BreadcrumbLink>
+                    )}
+                  </BreadcrumbItem>
+                </div>
+              ))}
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
 
-      {/* File Rename Dialog */}
-      {renameDialogFile && (
-        <FileRenameDialog
-          fileId={renameDialogFile.id}
-          fileName={renameDialogFile.name}
-          open={!!renameDialogFile}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setRenameDialogFile(undefined);
-          }}
-          onFileRenamed={() => {
-            void refetch();
-            setRenameDialogFile(undefined);
-          }}
-        />
-      )}
-    </div>
+        {/* Main Content */}
+        <Card className="flex flex-1 flex-col overflow-hidden">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>{currentFolderName}</CardTitle>
+              <div className="flex gap-2">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setViewMode("grid");
+                  }}
+                >
+                  Grid
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setViewMode("list");
+                  }}
+                >
+                  List
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 overflow-y-auto">
+            {renderContent()}
+          </CardContent>
+        </Card>
+
+        {/* File Delete Dialog */}
+        {deleteDialogFileId && (
+          <FileDeleteDialog
+            fileId={deleteDialogFileId}
+            fileName={
+              filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
+            }
+            open={!!deleteDialogFileId}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setDeleteDialogFileId(undefined);
+            }}
+            onFileDeleted={() => {
+              void refetch();
+              setDeleteDialogFileId(undefined);
+            }}
+          />
+        )}
+
+        {/* File Rename Dialog */}
+        {renameDialogFile && (
+          <FileRenameDialog
+            fileId={renameDialogFile.id}
+            fileName={renameDialogFile.name}
+            open={!!renameDialogFile}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setRenameDialogFile(undefined);
+            }}
+            onFileRenamed={() => {
+              void refetch();
+              setRenameDialogFile(undefined);
+            }}
+          />
+        )}
+      </div>
+    </GlobalDropzone>
   );
 }

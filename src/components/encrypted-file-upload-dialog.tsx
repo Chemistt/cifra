@@ -2,7 +2,8 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { UploadIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import * as React from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,9 +20,11 @@ import { useUploadThing } from "@/lib/uploadthing";
 import { useTRPC } from "@/trpc/react";
 
 type EncryptedFileUploadDialogProps = {
-  children: React.ReactNode;
+  children?: React.ReactNode; // Make children optional
   onUploadComplete?: () => void;
   folderId?: string;
+  preloadedFiles?: File[]; // Add preloaded files prop
+  autoStartUpload?: boolean; // Add auto start upload prop
 };
 
 type UploadState = {
@@ -35,10 +38,12 @@ export function EncryptedFileUploadDialog({
   children,
   onUploadComplete,
   folderId,
+  preloadedFiles,
+  autoStartUpload = false,
 }: EncryptedFileUploadDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const isProcessingRef = useRef(false); // Prevent multiple simultaneous uploads
 
   const trpc = useTRPC();
 
@@ -111,109 +116,127 @@ export function EncryptedFileUploadDialog({
     };
   };
 
-  const handleFileUpload = async (files: File[]) => {
-    const newUploads: UploadState[] = files.map((file) => ({
-      file,
-      progress: 0,
-      status: "encrypting",
-    }));
+  const handleFileUpload = useCallback(
+    async (files: File[]) => {
+      // Prevent multiple simultaneous uploads
+      if (isProcessingRef.current) {
+        console.log("Upload already in progress, skipping...");
+        return;
+      }
 
-    setUploads(newUploads);
+      isProcessingRef.current = true;
 
-    for (const [index, file] of files.entries()) {
-      try {
-        // Step 1: Encrypt the file
-        updateUploadProgress(index, { status: "encrypting", progress: 10 });
+      const newUploads: UploadState[] = files.map((file) => ({
+        file,
+        progress: 0,
+        status: "encrypting",
+      }));
 
-        const encryptedData = await encryptFileComplete(file);
-        updateUploadProgress(index, { progress: 30 });
+      setUploads(newUploads);
 
-        // Step 2: Encrypt the DEK with user's KEK
-        const encryptedDEKResult = await encryptDEKMutation.mutateAsync(
-          encryptedData.dekBase64,
-        );
-        updateUploadProgress(index, { progress: 50 });
+      let completedCount = 0;
+      const totalFiles = files.length;
 
-        // Step 3: Upload encrypted file to UploadThing
-        updateUploadProgress(index, { status: "uploading", progress: 60 });
+      for (const [index, file] of files.entries()) {
+        try {
+          // Step 1: Encrypt the file
+          updateUploadProgress(index, { status: "encrypting", progress: 10 });
 
-        const uploadResult = await uploadEncryptedFile(
-          encryptedData.encryptedFile,
-          encryptedData.originalFileName,
-        );
-        updateUploadProgress(index, { progress: 80 });
+          const encryptedData = await encryptFileComplete(file);
+          updateUploadProgress(index, { progress: 30 });
 
-        // Step 4: Save encrypted file metadata
-        updateUploadProgress(index, { status: "processing", progress: 90 });
+          // Step 2: Encrypt the DEK with user's KEK
+          const encryptedDEKResult = await encryptDEKMutation.mutateAsync(
+            encryptedData.dekBase64,
+          );
+          updateUploadProgress(index, { progress: 50 });
 
-        await createEncryptedFileMetadataMutation.mutateAsync({
-          name: encryptedData.originalFileName,
-          storagePath: uploadResult.key,
-          mimeType: encryptedData.mimeType,
-          size: encryptedData.originalSize,
-          encryptedSize: encryptedData.encryptedFile.size,
-          folderId,
-          encryptedDEK: encryptedDEKResult.encryptedDEK,
-          keyId: encryptedDEKResult.keyId,
-          iv: uint8ArrayToBase64(encryptedData.iv),
-        });
+          // Step 3: Upload encrypted file to UploadThing
+          updateUploadProgress(index, { status: "uploading", progress: 60 });
 
-        updateUploadProgress(index, {
-          status: "completed",
-          progress: 100,
-        });
+          const uploadResult = await uploadEncryptedFile(
+            encryptedData.encryptedFile,
+            encryptedData.originalFileName,
+          );
+          updateUploadProgress(index, { progress: 80 });
 
-        toast.success(
-          `File "${file.name}" uploaded and encrypted successfully`,
-        );
-      } catch (error) {
-        console.error("Upload error:", error);
-        updateUploadProgress(index, {
-          status: "error",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-        toast.error(`Failed to upload "${file.name}"`);
+          // Step 4: Save encrypted file metadata
+          updateUploadProgress(index, { status: "processing", progress: 90 });
+
+          await createEncryptedFileMetadataMutation.mutateAsync({
+            name: encryptedData.originalFileName,
+            storagePath: uploadResult.key,
+            mimeType: encryptedData.mimeType,
+            size: encryptedData.originalSize,
+            encryptedSize: encryptedData.encryptedFile.size,
+            folderId,
+            encryptedDEK: encryptedDEKResult.encryptedDEK,
+            keyId: encryptedDEKResult.keyId,
+            iv: uint8ArrayToBase64(encryptedData.iv),
+          });
+
+          updateUploadProgress(index, {
+            status: "completed",
+            progress: 100,
+          });
+
+          completedCount++;
+
+          toast.success(
+            `File "${file.name}" uploaded and encrypted successfully`,
+          );
+        } catch (error) {
+          console.error("Upload error:", error);
+          updateUploadProgress(index, {
+            status: "error",
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+          toast.error(`Failed to upload "${file.name}"`);
+        }
+      }
+
+      // Check if all uploads completed successfully and close dialog
+      if (completedCount === totalFiles) {
+        setTimeout(() => {
+          setIsOpen(false);
+          setUploads([]);
+          isProcessingRef.current = false;
+          onUploadComplete?.();
+        }, 1000);
+      } else {
+        isProcessingRef.current = false;
+      }
+    },
+    [
+      folderId,
+      encryptDEKMutation,
+      createEncryptedFileMetadataMutation,
+      onUploadComplete,
+      startUpload,
+    ],
+  );
+
+  // useEffect to handle preloaded files - simplified dependencies
+  React.useEffect(() => {
+    if (
+      preloadedFiles &&
+      preloadedFiles.length > 0 &&
+      !isProcessingRef.current
+    ) {
+      if (autoStartUpload) {
+        setIsOpen(true);
+        void handleFileUpload(preloadedFiles);
+      } else {
+        setIsOpen(true);
       }
     }
-
-    // Check if all uploads completed successfully
-    const completedUploads = uploads.filter(
-      (upload) => upload.status === "completed",
-    );
-    if (completedUploads.length === files.length) {
-      setTimeout(() => {
-        setIsOpen(false);
-        setUploads([]);
-        onUploadComplete?.();
-      }, 1000);
-    }
-  };
+  }, [preloadedFiles, autoStartUpload]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = [...(event.target.files ?? [])];
     if (files.length > 0) {
       void handleFileUpload(files);
     }
-  };
-
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(false);
-
-    const files = [...event.dataTransfer.files];
-    if (files.length > 0) {
-      void handleFileUpload(files);
-    }
-  };
-
-  const handleDragOver = (event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (event: React.DragEvent) => {
-    event.preventDefault();
-    setIsDragOver(false);
   };
 
   const removeUpload = (index: number) => {
@@ -270,28 +293,17 @@ export function EncryptedFileUploadDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Upload Files</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Upload Area */}
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            className={`rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
-              isDragOver
-                ? "border-primary bg-primary/5"
-                : "border-gray-300 hover:border-gray-400"
-            }`}
-          >
+          {/* Manual File Selection */}
+          <div className="rounded-lg border p-6 text-center">
             <UploadIcon className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-            <p className="mb-2 text-lg font-medium">
-              Drop files here or click to browse
-            </p>
+            <p className="mb-2 text-lg font-medium">Select Files to Upload</p>
             <p className="mb-4 text-sm text-gray-500">
               Files will be encrypted on your device before upload
             </p>
