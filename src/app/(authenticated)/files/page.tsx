@@ -478,15 +478,23 @@ export default function FilesPage() {
       : (folderContents ?? []);
   }, [searchQuery, searchResults, folderContents]);
 
-  // Refresh function for after upload
-  const handleUploadComplete = () => {
-    void refetch();
-  };
-
-  // Refresh function for after folder creation
-  const handleFolderCreated = () => {
-    void refetch();
-  };
+  // Rename file mutation
+  const renameFileMutation = useMutation(
+    trpc.files.renameFile.mutationOptions({
+      onSuccess: () => {
+        toast.success("File renamed successfully");
+        setRenameState({
+          file: undefined,
+          newName: "",
+          isOpen: false,
+        });
+        void refetch();
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
 
   // Rename file handlers
   const startRenaming = (file: { id: string; name: string }) => {
@@ -561,7 +569,9 @@ export default function FilesPage() {
 
   return (
     <GlobalDropzone
-      onUploadComplete={handleUploadComplete}
+      onUploadComplete={() => {
+        void refetch();
+      }}
       folderId={currentFolderId ?? undefined}
     >
       <div className="flex h-full w-full flex-col space-y-6">
@@ -575,7 +585,9 @@ export default function FilesPage() {
           </div>
           <div className="flex gap-2">
             <EncryptedFileUploadDialog
-              onUploadComplete={handleUploadComplete}
+              onUploadComplete={() => {
+                void refetch();
+              }}
               folderId={currentFolderId ?? undefined}
             >
               <Button variant="outline">
@@ -584,7 +596,9 @@ export default function FilesPage() {
               </Button>
             </EncryptedFileUploadDialog>
             <FolderCreateDialog
-              onFolderCreated={handleFolderCreated}
+              onFolderCreated={() => {
+                void refetch();
+              }}
               parentId={currentFolderId ?? undefined}
             >
               <Button>
