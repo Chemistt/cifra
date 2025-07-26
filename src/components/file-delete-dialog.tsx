@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -29,13 +29,17 @@ export function FileDeleteDialog({
   onOpenChange,
 }: FileDeleteDialogProps) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   const { mutate, isPending } = useMutation(
     trpc.files.deleteFile.mutationOptions({
       onSuccess: () => {
         toast.success(`File "${fileName}" deleted successfully.`);
         onFileDeleted();
-        onOpenChange(false); // Close the dialog
+        onOpenChange(false);
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
       },
       onError: (error) => {
         toast.error(`Failed to delete file: ${error.message}`);
@@ -51,7 +55,8 @@ export function FileDeleteDialog({
           <DialogDescription>
             Are you sure you want to delete{" "}
             <span className="font-medium">{fileName}</span>?<br />
-            This action will move the file to &quot;Recently Deleted&quot; folder and can be undone later.
+            This action will move the file to &quot;Recently Deleted&quot;
+            folder and can be undone later.
           </DialogDescription>
         </DialogHeader>
         <div className="flex justify-end gap-2">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
   DownloadIcon,
@@ -17,9 +17,9 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
-import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { GlobalDropzone } from "@/components/global-dropzone";
 import { Badge } from "@/components/ui/badge";
@@ -435,7 +435,6 @@ function EmptyState({ searchQuery }: { searchQuery: string }) {
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
@@ -474,26 +473,6 @@ export default function FilesPage() {
       ? (searchResults ?? [])
       : (folderContents ?? []);
   }, [searchQuery, searchResults, folderContents]);
-
-  // Rename file mutation
-  const renameFileMutation = useMutation(
-    trpc.files.renameFile.mutationOptions({
-      onSuccess: () => {
-        toast.success("File renamed successfully");
-        setRenameState({
-          file: undefined,
-          newName: "",
-          isOpen: false,
-        });
-        void queryClient.invalidateQueries({
-          queryKey: trpc.files.getFolderContents.queryKey(),
-        });
-      },
-      onError: (error) => {
-        toast.error(error.message);
-      },
-    }),
-  );
 
   // Rename file handlers
   const startRenaming = (file: { id: string; name: string }) => {
@@ -693,7 +672,6 @@ export default function FilesPage() {
               if (!isOpen) setDeleteDialogFileId(undefined);
             }}
             onFileDeleted={() => {
-              void refetch();
               setDeleteDialogFileId(undefined);
             }}
           />
@@ -709,7 +687,6 @@ export default function FilesPage() {
               if (!isOpen) setRenameDialogFile(undefined);
             }}
             onFileRenamed={() => {
-              void refetch();
               setRenameDialogFile(undefined);
             }}
           />
