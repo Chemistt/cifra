@@ -138,7 +138,7 @@ type ViewProps = {
   filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
   navigateToFolder: (folder: { id: string; name: string }) => void;
   startRenaming: (file: { id: string; name: string }) => void;
-  refetch: () => void; // Function to refetch data after deletion
+  onDeleteFile: (fileId: string) => void;
 };
 
 function GridView({
@@ -146,11 +146,8 @@ function GridView({
   filesToRender,
   navigateToFolder,
   startRenaming,
-  refetch,
+  onDeleteFile,
 }: ViewProps) {
-  const [deleteDialogFileId, setDeleteDialogFileId] = useState<
-    string | undefined
-  >();
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
@@ -279,7 +276,7 @@ function GridView({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {
-                        setDeleteDialogFileId(item.id); // Open the dialog for this file
+                        onDeleteFile(item.id);
                       }}
                     >
                       <Trash2Icon className="mr-2 h-4 w-4" />
@@ -292,38 +289,6 @@ function GridView({
           </Card>
         ) : undefined,
       )}
-      {deleteDialogFileId && (
-        <FileDeleteDialog
-          fileId={deleteDialogFileId}
-          fileName={
-            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
-          }
-          open={!!deleteDialogFileId} // Control open state
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(undefined); // Close the dialog
-          }}
-          onFileDeleted={() => {
-            refetch();
-            setDeleteDialogFileId(undefined); // Close the dialog
-          }}
-        />
-      )}
-      {deleteDialogFileId && (
-        <FileDeleteDialog
-          fileId={deleteDialogFileId}
-          fileName={
-            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
-          }
-          open={!!deleteDialogFileId} // Control open state
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(undefined); // Close the dialog
-          }}
-          onFileDeleted={() => {
-            refetch();
-            setDeleteDialogFileId(undefined); // Close the dialog
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -333,11 +298,8 @@ function ListView({
   filesToRender,
   navigateToFolder,
   startRenaming,
-  refetch,
+  onDeleteFile,
 }: ViewProps) {
-  const [deleteDialogFileId, setDeleteDialogFileId] = useState<
-    string | undefined
-  >();
   return (
     <div className="space-y-2">
       {/* Folders */}
@@ -447,7 +409,7 @@ function ListView({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
-                    setDeleteDialogFileId(file.id); // Open the dialog for this file
+                    onDeleteFile(file.id);
                   }}
                 >
                   <Trash2Icon className="mr-2 h-4 w-4" />
@@ -457,22 +419,6 @@ function ListView({
             </DropdownMenu>
           </div>
         ))}
-      {deleteDialogFileId && (
-        <FileDeleteDialog
-          fileId={deleteDialogFileId}
-          fileName={
-            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
-          }
-          open={!!deleteDialogFileId} // Control open state
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setDeleteDialogFileId(undefined); // Close the dialog
-          }}
-          onFileDeleted={() => {
-            refetch();
-            setDeleteDialogFileId(undefined); // Close the dialog
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -510,6 +456,10 @@ export default function FilesPage() {
     newName: "",
     isOpen: false,
   });
+
+  const [deleteDialogFileId, setDeleteDialogFileId] = useState<
+    string | undefined
+  >();
 
   // tRPC Queries
   const {
@@ -643,9 +593,7 @@ export default function FilesPage() {
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
           startRenaming={startRenaming}
-          refetch={() => {
-            void refetch();
-          }}
+          onDeleteFile={setDeleteDialogFileId}
         />
       );
     }
@@ -656,9 +604,7 @@ export default function FilesPage() {
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
         startRenaming={startRenaming}
-        refetch={() => {
-          void refetch();
-        }}
+        onDeleteFile={setDeleteDialogFileId}
       />
     );
   };
@@ -782,6 +728,24 @@ export default function FilesPage() {
           {renderContent()}
         </CardContent>
       </Card>
+
+      {/* File Delete Dialog */}
+      {deleteDialogFileId && (
+        <FileDeleteDialog
+          fileId={deleteDialogFileId}
+          fileName={
+            filesToRender.find((f) => f.id === deleteDialogFileId)?.name ?? ""
+          }
+          open={!!deleteDialogFileId}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setDeleteDialogFileId(undefined);
+          }}
+          onFileDeleted={() => {
+            void refetch();
+            setDeleteDialogFileId(undefined);
+          }}
+        />
+      )}
 
       {/* Rename File Dialog */}
       <Dialog
