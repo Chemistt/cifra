@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
   DownloadIcon,
@@ -435,6 +435,7 @@ function EmptyState({ searchQuery }: { searchQuery: string }) {
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
@@ -451,11 +452,7 @@ export default function FilesPage() {
   >();
 
   // tRPC Queries
-  const {
-    data: folderContents,
-    isLoading: isFolderLoading,
-    refetch,
-  } = useQuery(
+  const { data: folderContents, isLoading: isFolderLoading } = useQuery(
     trpc.files.getFolderContents.queryOptions({
       folderId: currentFolderId ?? undefined,
     }),
@@ -488,7 +485,9 @@ export default function FilesPage() {
           newName: "",
           isOpen: false,
         });
-        void refetch();
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
       },
       onError: (error) => {
         toast.error(error.message);
@@ -568,12 +567,7 @@ export default function FilesPage() {
   };
 
   return (
-    <GlobalDropzone
-      onUploadComplete={() => {
-        void refetch();
-      }}
-      folderId={currentFolderId ?? undefined}
-    >
+    <GlobalDropzone folderId={currentFolderId ?? undefined}>
       <div className="flex h-full w-full flex-col space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -584,23 +578,13 @@ export default function FilesPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <EncryptedFileUploadDialog
-              onUploadComplete={() => {
-                void refetch();
-              }}
-              folderId={currentFolderId ?? undefined}
-            >
+            <EncryptedFileUploadDialog folderId={currentFolderId ?? undefined}>
               <Button variant="outline">
                 <UploadIcon className="mr-2 h-4 w-4" />
                 🔒 Upload
               </Button>
             </EncryptedFileUploadDialog>
-            <FolderCreateDialog
-              onFolderCreated={() => {
-                void refetch();
-              }}
-              parentId={currentFolderId ?? undefined}
-            >
+            <FolderCreateDialog parentId={currentFolderId ?? undefined}>
               <Button>
                 <PlusIcon className="mr-2 h-4 w-4" />
                 New Folder

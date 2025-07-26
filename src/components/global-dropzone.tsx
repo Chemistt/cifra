@@ -7,7 +7,6 @@ import { useRef, useState } from "react";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 
 type GlobalDropzoneProps = {
-  onUploadComplete?: () => void;
   folderId?: string;
   children: React.ReactNode;
 };
@@ -17,11 +16,7 @@ const handleDragOver = (event: React.DragEvent) => {
   event.stopPropagation();
 };
 
-export function GlobalDropzone({
-  onUploadComplete,
-  folderId,
-  children,
-}: GlobalDropzoneProps) {
+export function GlobalDropzone({ folderId, children }: GlobalDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0); // Tracks nested drag events to prevent flickering
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
@@ -63,7 +58,6 @@ export function GlobalDropzone({
 
   const handleUploadComplete = () => {
     setDroppedFiles([]);
-    onUploadComplete?.();
   };
 
   return (
@@ -95,10 +89,10 @@ export function GlobalDropzone({
 
       {/* Encrypted File Upload Dialog */}
       <EncryptedFileUploadDialog
-        onUploadComplete={handleUploadComplete}
         folderId={folderId}
         preloadedFiles={droppedFiles}
         autoStartUpload={true}
+        onUploadComplete={handleUploadComplete}
       />
     </>
   );

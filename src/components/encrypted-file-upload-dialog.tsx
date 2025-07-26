@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UploadIcon, XIcon } from "lucide-react";
 import * as React from "react";
 import { useCallback, useRef, useState } from "react";
@@ -21,10 +21,10 @@ import { useTRPC } from "@/trpc/react";
 
 type EncryptedFileUploadDialogProps = {
   children?: React.ReactNode; // Make children optional
-  onUploadComplete?: () => void;
   folderId?: string;
   preloadedFiles?: File[]; // Add preloaded files prop
   autoStartUpload?: boolean; // Add auto start upload prop
+  onUploadComplete?: () => void; // Add upload complete callback
 };
 
 type UploadState = {
@@ -36,16 +36,17 @@ type UploadState = {
 
 export function EncryptedFileUploadDialog({
   children,
-  onUploadComplete,
   folderId,
   preloadedFiles,
   autoStartUpload = false,
+  onUploadComplete,
 }: EncryptedFileUploadDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const isProcessingRef = useRef(false); // Prevent multiple simultaneous uploads
 
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   // UploadThing hook for file uploads
   const { startUpload } = useUploadThing("mainFileUploader", {
@@ -201,6 +202,10 @@ export function EncryptedFileUploadDialog({
           setIsOpen(false);
           setUploads([]);
           isProcessingRef.current = false;
+          void queryClient.invalidateQueries({
+            queryKey: trpc.files.getFolderContents.queryKey(),
+          });
+          // Call the completion callback if provided
           onUploadComplete?.();
         }, 1000);
       } else {
@@ -211,8 +216,9 @@ export function EncryptedFileUploadDialog({
       folderId,
       encryptDEKMutation,
       createEncryptedFileMetadataMutation,
-      onUploadComplete,
       startUpload,
+      onUploadComplete,
+      queryClient,
     ],
   );
 

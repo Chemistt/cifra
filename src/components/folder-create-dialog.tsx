@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FolderPlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -20,7 +20,6 @@ import { Label } from "@/components/ui/label";
 import { useTRPC } from "@/trpc/react";
 
 type FolderCreateDialogProps = {
-  onFolderCreated?: () => void;
   parentId?: string;
   children?: React.ReactNode;
 };
@@ -36,7 +35,6 @@ const folderNameSchema = z
   );
 
 export function FolderCreateDialog({
-  onFolderCreated,
   parentId,
   children,
 }: FolderCreateDialogProps) {
@@ -45,6 +43,7 @@ export function FolderCreateDialog({
   const [isCreating, setIsCreating] = useState(false);
 
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   const createFolderMutation = useMutation(
     trpc.files.createFolder.mutationOptions({
@@ -52,7 +51,9 @@ export function FolderCreateDialog({
         toast.success(`Folder "${folder.name}" created successfully!`);
         setOpen(false);
         setFolderName("");
-        onFolderCreated?.();
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.pathKey(),
+        });
       },
       onError: (error) => {
         toast.error(`Failed to create folder: ${error.message}`);
