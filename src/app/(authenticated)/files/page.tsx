@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
   DownloadIcon,
@@ -16,9 +16,9 @@ import {
   UploadIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
+import { FileRenameDialog } from "@/components/file-rename-dialog";
 import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -32,12 +32,6 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -447,18 +441,12 @@ export default function FilesPage() {
     { id: undefined, name: "My Files" },
   ]);
 
-  const [renameState, setRenameState] = useState<{
-    file: { id: string; name: string } | undefined;
-    newName: string;
-    isOpen: boolean;
-  }>({
-    file: undefined,
-    newName: "",
-    isOpen: false,
-  });
-
   const [deleteDialogFileId, setDeleteDialogFileId] = useState<
     string | undefined
+  >();
+
+  const [renameDialogFile, setRenameDialogFile] = useState<
+    { id: string; name: string } | undefined
   >();
 
   // tRPC Queries
@@ -499,48 +487,9 @@ export default function FilesPage() {
     void refetch();
   };
 
-  // Rename file mutation
-  const renameFileMutation = useMutation(
-    trpc.files.renameFile.mutationOptions({
-      onSuccess: () => {
-        toast.success("File renamed successfully");
-        setRenameState({
-          file: undefined,
-          newName: "",
-          isOpen: false,
-        });
-        void refetch();
-      },
-      onError: (error) => {
-        toast.error(error.message);
-      },
-    }),
-  );
-
   // Rename file handlers
   const startRenaming = (file: { id: string; name: string }) => {
-    setRenameState({
-      file,
-      newName: file.name,
-      isOpen: true,
-    });
-  };
-
-  const handleRename = () => {
-    if (!renameState.file || !renameState.newName.trim()) return;
-
-    renameFileMutation.mutate({
-      fileId: renameState.file.id,
-      newName: renameState.newName.trim(),
-    });
-  };
-
-  const cancelRename = () => {
-    setRenameState({
-      file: undefined,
-      newName: "",
-      isOpen: false,
-    });
+    setRenameDialogFile(file);
   };
 
   // Navigation functions
@@ -747,62 +696,21 @@ export default function FilesPage() {
         />
       )}
 
-      {/* Rename File Dialog */}
-      <Dialog
-        open={!!renameState.file}
-        onOpenChange={() => {
-          if (renameState.file) {
-            cancelRename();
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename File</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="fileName" className="text-sm font-medium">
-                File Name
-              </label>
-              <input
-                id="fileName"
-                type="text"
-                value={renameState.newName}
-                onChange={(event) => {
-                  setRenameState({
-                    ...renameState,
-                    newName: event.target.value,
-                  });
-                }}
-                className="mt-1 w-full rounded border p-2"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    handleRename();
-                  } else if (event.key === "Escape") {
-                    cancelRename();
-                  }
-                }}
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={cancelRename}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleRename}
-                disabled={
-                  !renameState.newName.trim() ||
-                  renameState.newName === renameState.file?.name
-                }
-              >
-                Rename
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* File Rename Dialog */}
+      {renameDialogFile && (
+        <FileRenameDialog
+          fileId={renameDialogFile.id}
+          fileName={renameDialogFile.name}
+          open={!!renameDialogFile}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setRenameDialogFile(undefined);
+          }}
+          onFileRenamed={() => {
+            void refetch();
+            setRenameDialogFile(undefined);
+          }}
+        />
+      )}
     </div>
   );
 }
