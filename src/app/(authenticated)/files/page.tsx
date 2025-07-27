@@ -17,7 +17,9 @@ import {
   PlusIcon,
   SearchIcon,
   ShareIcon,
+  TagIcon,
   UploadIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +50,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { env } from "@/env";
@@ -448,18 +463,28 @@ function ListView({
 // Empty state component
 type EmptyStateProps = {
   searchQuery: string;
+  selectedTagIds: string[];
 };
 
-function EmptyState({ searchQuery }: EmptyStateProps) {
+function EmptyState({ searchQuery, selectedTagIds }: EmptyStateProps) {
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const hasTagFilters = selectedTagIds.length > 0;
+
+  let message = "This folder is empty. Upload some files to get started.";
+
+  if (hasSearchQuery && hasTagFilters) {
+    message = "Try adjusting your search query or tag filters";
+  } else if (hasSearchQuery) {
+    message = "Try adjusting your search query";
+  } else if (hasTagFilters) {
+    message = "No files found with the selected tags";
+  }
+
   return (
     <div className="py-12 text-center">
       <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
       <h3 className="mb-2 text-lg font-medium">No files found</h3>
-      <p className="text-muted-foreground">
-        {searchQuery
-          ? "Try adjusting your search query"
-          : "This folder is empty. Upload some files to get started."}
-      </p>
+      <p className="text-muted-foreground">{message}</p>
     </div>
   );
 }
@@ -473,6 +498,10 @@ export default function FilesPage() {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
     { id: null, name: "My Files" },
   ]);
+
+  // Tag filtering state
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tagMatchMode, setTagMatchMode] = useState<"any" | "all">("any");
 
   // Rename file state
   const [editingFile, setEditingFile] = useState<{
@@ -490,6 +519,9 @@ export default function FilesPage() {
     isOpen: false,
   });
 
+  // Get user tags
+  const { data: userTags } = useQuery(trpc.files.getUserTags.queryOptions());
+
   // tRPC Queries
   const {
     data: folderContents,
@@ -501,22 +533,23 @@ export default function FilesPage() {
     }),
   );
 
-  // Search query - only execute if searchQuery is not empty
+  // Search query - execute if searchQuery or selectedTagIds are not empty
   const { data: searchResults, isLoading: isSearchLoading } = useQuery({
     ...trpc.files.searchFiles.queryOptions({
       query: searchQuery,
+      tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+      tagMatchMode,
     }),
-    enabled: searchQuery.trim().length > 0, // Only run if there's a search query
+    enabled: searchQuery.trim().length > 0 || selectedTagIds.length > 0,
   });
 
   // Determine which data to use
-  const isLoading =
-    searchQuery.trim().length > 0 ? isSearchLoading : isFolderLoading;
+  const isSearching =
+    searchQuery.trim().length > 0 || selectedTagIds.length > 0;
+  const isLoading = isSearching ? isSearchLoading : isFolderLoading;
   const dataToRender = useMemo(() => {
-    return searchQuery.trim().length > 0
-      ? (searchResults ?? [])
-      : (folderContents ?? []);
-  }, [searchQuery, searchResults, folderContents]);
+    return isSearching ? (searchResults ?? []) : (folderContents ?? []);
+  }, [isSearching, searchResults, folderContents]);
 
   // Refresh function for after upload
   const handleUploadComplete = () => {
@@ -580,6 +613,25 @@ export default function FilesPage() {
     });
   };
 
+  // Tag filtering handlers
+  const handleTagSelect = (tagId: string) => {
+    setSelectedTagIds((previous) => {
+      if (previous.includes(tagId)) {
+        return previous.filter((id) => id !== tagId);
+      }
+      return [...previous, tagId];
+    });
+  };
+
+  const clearTagFilters = () => {
+    setSelectedTagIds([]);
+  };
+
+  const clearAllFilters = () => {
+    setSearchQuery("");
+    setSelectedTagIds([]);
+  };
+
   // Navigation functions
   const navigateToFolder = (folder: { id: string; name: string }) => {
     setCurrentFolderId(folder.id);
@@ -620,7 +672,9 @@ export default function FilesPage() {
     }
 
     if (foldersToRender.length === 0 && filesToRender.length === 0) {
-      return <EmptyState searchQuery={searchQuery} />;
+      return (
+        <EmptyState searchQuery={searchQuery} selectedTagIds={selectedTagIds} />
+      );
     }
 
     if (viewMode === "grid") {
@@ -692,7 +746,140 @@ export default function FilesPage() {
               className="pl-10"
             />
           </div>
+
+          {/* Tag Filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="relative">
+                <TagIcon className="mr-2 h-4 w-4" />
+                Filter by Tags
+                {selectedTagIds.length > 0 && (
+                  <Badge className="ml-2" variant="secondary">
+                    {selectedTagIds.length}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80" align="start">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">Filter by Tags</h4>
+                  {selectedTagIds.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearTagFilters}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+
+                {/* Tag Match Mode */}
+                <div className="space-y-2">
+                  <Label className="text-sm">Match Mode</Label>
+                  <Select
+                    value={tagMatchMode}
+                    onValueChange={(value: "any" | "all") => {
+                      setTagMatchMode(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any tag</SelectItem>
+                      <SelectItem value="all">All tags</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Tag List */}
+                <div className="space-y-2">
+                  <Label className="text-sm">Tags</Label>
+                  <div className="max-h-60 space-y-2 overflow-y-auto">
+                    {userTags?.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">
+                        No tags available
+                      </p>
+                    ) : (
+                      userTags?.map((tag) => (
+                        <div
+                          key={tag.id}
+                          className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`tag-${tag.id}`}
+                              checked={selectedTagIds.includes(tag.id)}
+                              onChange={() => {
+                                handleTagSelect(tag.id);
+                              }}
+                              className="rounded"
+                            />
+                            <label
+                              htmlFor={`tag-${tag.id}`}
+                              className="cursor-pointer text-sm"
+                            >
+                              {tag.name}
+                            </label>
+                          </div>
+                          <span className="text-muted-foreground text-xs">
+                            {tag.totalCount}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Clear All Filters */}
+          {(() => {
+            const hasActiveFilters =
+              searchQuery.trim().length > 0 || selectedTagIds.length > 0;
+            if (!hasActiveFilters) return null;
+
+            return (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                <XIcon className="mr-2 h-4 w-4" />
+                Clear All
+              </Button>
+            );
+          })()}
         </div>
+
+        {/* Active Filters Display */}
+        {selectedTagIds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground text-sm">
+              Filtering by tags:
+            </span>
+            {selectedTagIds.map((tagId) => {
+              const tag = userTags?.find((t) => t.id === tagId);
+              return tag ? (
+                <Badge
+                  key={tagId}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
+                  {tag.name}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleTagSelect(tagId);
+                    }}
+                    className="hover:bg-muted ml-1 rounded-full p-1"
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ) : null;
+            })}
+            <span className="text-muted-foreground text-xs">
+              ({tagMatchMode === "any" ? "matching any" : "matching all"} tags)
+            </span>
+          </div>
+        )}
 
         {/* Breadcrumbs */}
         <Breadcrumb>

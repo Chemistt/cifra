@@ -208,29 +208,70 @@ export const filesRouter = createTRPCRouter({
     .input(
       z.object({
         query: z.string(),
+        tagIds: z.array(z.string()).optional(), // Optional tag filter
+        tagMatchMode: z.enum(["any", "all"]).default("any"), // How to match tags
       }),
     )
     .query(async ({ ctx, input }) => {
       const { user } = ctx.session;
       const userId = user.id;
-      const { query } = input;
+      const { query, tagIds, tagMatchMode } = input;
 
-      // If no query is provided, return empty results
-      if (!query.trim()) {
+      // If no query and no tags are provided, return empty results
+      if (!query.trim() && (!tagIds || tagIds.length === 0)) {
         return [];
       }
+
+      // Build tag filter conditions
+      const tagFilter =
+        tagIds && tagIds.length > 0
+          ? tagMatchMode === "all"
+            ? {
+                every: {
+                  tagId: {
+                    in: tagIds,
+                  },
+                },
+              }
+            : {
+                some: {
+                  tagId: {
+                    in: tagIds,
+                  },
+                },
+              }
+          : undefined;
+
+      // Build search conditions for folders
+      const folderConditions = {
+        ownerId: userId,
+        deletedAt: null,
+        ...(query.trim() && {
+          name: {
+            contains: query,
+            mode: "insensitive" as const,
+          },
+        }),
+        ...(tagFilter && { tags: tagFilter }),
+      };
+
+      // Build search conditions for files
+      const fileConditions = {
+        ownerId: userId,
+        deletedAt: null,
+        ...(query.trim() && {
+          name: {
+            contains: query,
+            mode: "insensitive" as const,
+          },
+        }),
+        ...(tagFilter && { tags: tagFilter }),
+      };
 
       // Search directly across all user's folders and files
       const [matchingFolders, matchingFiles] = await Promise.all([
         ctx.db.folder.findMany({
-          where: {
-            ownerId: userId,
-            deletedAt: null,
-            name: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
+          where: folderConditions,
           select: {
             id: true,
             name: true,
@@ -247,14 +288,7 @@ export const filesRouter = createTRPCRouter({
           take: 50, // Limit results for performance
         }),
         ctx.db.file.findMany({
-          where: {
-            ownerId: userId,
-            deletedAt: null,
-            name: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
+          where: fileConditions,
           select: {
             id: true,
             name: true,
@@ -335,6 +369,194 @@ export const filesRouter = createTRPCRouter({
         if (!aExact && bExact) return 1;
 
         // Secondly by name
+        return a.name.localeCompare(b.name);
+      });
+
+      return results;
+    }),
+  getUserTags: protectedProcedure.query(async ({ ctx }) => {
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const userTags = await ctx.db.userTags.findMany({
+      where: {
+        ownerId: userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        _count: {
+          select: {
+            fileTags: true,
+            folderTags: true,
+          },
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    return userTags.map((tag) => ({
+      id: tag.id,
+      name: tag.name,
+      fileCount: tag._count.fileTags,
+      folderCount: tag._count.folderTags,
+      totalCount: tag._count.fileTags + tag._count.folderTags,
+    }));
+  }),
+  searchByTags: protectedProcedure
+    .input(
+      z.object({
+        tagIds: z.array(z.string()).min(1, "At least one tag must be selected"),
+        matchMode: z.enum(["any", "all"]).default("any"), // Match any tag or all tags
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { tagIds, matchMode } = input;
+
+      // Get folder paths for context
+      const getFolderPath = async (folderId: string): Promise<string[]> => {
+        const folder = await ctx.db.folder.findUnique({
+          where: { id: folderId },
+          select: { name: true, parentId: true },
+        });
+
+        if (!folder?.parentId) {
+          return folder?.name ? [folder.name] : [];
+        }
+
+        const parentPath = await getFolderPath(folder.parentId);
+        return [...parentPath, folder.name];
+      };
+
+      // Search folders by tags
+      const folderQuery = {
+        where: {
+          ownerId: userId,
+          deletedAt: null,
+          tags:
+            matchMode === "all"
+              ? {
+                  every: {
+                    tagId: {
+                      in: tagIds,
+                    },
+                  },
+                }
+              : {
+                  some: {
+                    tagId: {
+                      in: tagIds,
+                    },
+                  },
+                },
+        },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          updatedAt: true,
+          passwordHash: true,
+          parentId: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+        take: 50,
+      };
+
+      // Search files by tags
+      const fileQuery = {
+        where: {
+          ownerId: userId,
+          deletedAt: null,
+          tags:
+            matchMode === "all"
+              ? {
+                  every: {
+                    tagId: {
+                      in: tagIds,
+                    },
+                  },
+                }
+              : {
+                  some: {
+                    tagId: {
+                      in: tagIds,
+                    },
+                  },
+                },
+        },
+        select: {
+          id: true,
+          name: true,
+          mimeType: true,
+          size: true,
+          storagePath: true,
+          createdAt: true,
+          updatedAt: true,
+          passwordHash: true,
+          folderId: true,
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+        take: 50,
+      };
+
+      const [matchingFolders, matchingFiles] = await Promise.all([
+        ctx.db.folder.findMany(folderQuery),
+        ctx.db.file.findMany(fileQuery),
+      ]);
+
+      // Map folders with path information
+      const mappedFolders = await Promise.all(
+        matchingFolders.map(async (folder) => {
+          const path = folder.parentId
+            ? await getFolderPath(folder.parentId)
+            : [];
+          return {
+            ...folder,
+            type: "folder" as const,
+            tags: folder.tags.map((tagRelation) => tagRelation.tag),
+            path: path,
+          };
+        }),
+      );
+
+      // Map files with path information
+      const mappedFiles = await Promise.all(
+        matchingFiles.map(async (file) => {
+          const path = await getFolderPath(file.folderId);
+          return {
+            ...file,
+            type: "file" as const,
+            tags: file.tags.map((tagRelation) => tagRelation.tag),
+            path: path,
+          };
+        }),
+      );
+
+      const results = [...mappedFolders, ...mappedFiles];
+
+      // Sort results: folders first, then by name
+      results.sort((a, b) => {
+        // Folders first
+        if (a.type === "folder" && b.type === "file") {
+          return -1;
+        }
+        if (a.type === "file" && b.type === "folder") {
+          return 1;
+        }
+
+        // Then by name
         return a.name.localeCompare(b.name);
       });
 
