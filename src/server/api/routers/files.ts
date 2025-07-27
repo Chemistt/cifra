@@ -222,7 +222,7 @@ export const filesRouter = createTRPCRouter({
         return [];
       }
 
-      // Build tag filter conditions
+      // Build the tag filter conditions
       const tagFilter =
         tagIds && tagIds.length > 0
           ? tagMatchMode === "all"
