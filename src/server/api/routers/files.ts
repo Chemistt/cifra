@@ -217,7 +217,7 @@ export const filesRouter = createTRPCRouter({
       const userId = user.id;
       const { query, tagIds, tagMatchMode } = input;
 
-      // If no query and no tags are provided, return empty results
+      // If no query and no tags are provided then return empty results
       if (!query.trim() && (!tagIds || tagIds.length === 0)) {
         return [];
       }
