@@ -381,4 +381,35 @@ export const filesRouter = createTRPCRouter({
 
       return updatedFile;
     }),
+
+  // Delete Files
+  deleteFile: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { id } = input;
+
+      try {
+        // Soft delete by updating 'deletedAt' values
+        const deletedFile = await ctx.db.file.update({
+          where: {
+            id,
+            ownerId: userId,
+            deletedAt: undefined,
+          },
+          data: { deletedAt: new Date() },
+        });
+    
+        return deletedFile;
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error; 
+        }
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or already deleted.",
+        });
+      }
+    }),
 });
