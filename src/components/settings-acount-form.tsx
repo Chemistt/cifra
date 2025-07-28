@@ -1,12 +1,12 @@
+/* eslint-disable @typescript-eslint/no-misused-promises */
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button"; // Import Button
 import {
   Card,
   CardContent,
@@ -23,20 +23,20 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { getAvatarInitials } from "@/lib/utils";
 import { useTRPC } from "@/trpc/react";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string(),
-  image: z.string().url("Invalid URL").optional(),
+  image: z.url("Invalid URL").optional(),
 });
 
 export function AccountForm() {
   const trpc = useTRPC();
-  const { data: user } = useSuspenseQuery(
-    trpc.profile.getProfile.queryOptions(),
-  );
+  const { data: user } = useSuspenseQuery(trpc.profile.getProfile.queryOptions());
+  const updateProfile = useMutation(trpc.profile.updateProfile.mutationOptions());
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -49,9 +49,22 @@ export function AccountForm() {
 
   const initials = getAvatarInitials(user.name);
 
+  const onSubmit = async (data: z.infer<typeof schema>) => {
+    try {
+      await updateProfile.mutateAsync({
+        name: data.name,
+        image: data.image,
+      });
+      alert("Profile updated successfully!");
+    } catch (error) {
+      console.error("Failed to update profile:", error);
+      alert("Failed to update profile. Please try again.");
+    }
+  };
+
   return (
     <Form {...form}>
-      <form className="space-y-8">
+      <form className="space-y-8" onSubmit={form.handleSubmit(onSubmit)}>
         <Card>
           <CardHeader>
             <CardTitle>Basic Information</CardTitle>
@@ -119,11 +132,8 @@ export function AccountForm() {
                 )}
               />
             </div>
-            <div className="text-muted-foreground text-sm">
-              Note: Email is readonly and cannot be updated.
-            </div>
             <div className="flex justify-end">
-              <Button type="button">Save Changes</Button>
+              <Button type="submit">Save Changes</Button>
             </div>
           </CardContent>
         </Card>

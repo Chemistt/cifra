@@ -21,15 +21,23 @@ export const profileRouter = createTRPCRouter({
     return profile;
   }),
   updateProfile: protectedProcedure
-    .input(z.object({ name: z.string() }))
+    .input(
+      z.object({
+        name: z.string(),
+        image: z.string().url("Invalid URL").optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { user } = ctx.session;
 
-      const profile = await ctx.db.user.update({
+      const updatedProfile = await ctx.db.user.update({
         where: { id: user.id },
-        data: { name: input.name.trim() },
+        data: {
+          name: input.name.trim(),
+          image: input.image?.trim(),
+        },
       });
 
-      return profile;
+      return updatedProfile;
     }),
 });
