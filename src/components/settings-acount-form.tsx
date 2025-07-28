@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button"; // Import Button
 import {
   Card,
   CardContent,
@@ -26,9 +27,9 @@ import { getAvatarInitials } from "@/lib/utils";
 import { useTRPC } from "@/trpc/react";
 
 const schema = z.object({
-  name: z.string(),
+  name: z.string().min(1, "Name is required"),
   email: z.string(),
-  image: z.string(),
+  image: z.string().url("Invalid URL").optional(),
 });
 
 export function AccountForm() {
@@ -47,6 +48,7 @@ export function AccountForm() {
   });
 
   const initials = getAvatarInitials(user.name);
+
   return (
     <Form {...form}>
       <form className="space-y-8">
@@ -75,7 +77,7 @@ export function AccountForm() {
                   <FormItem>
                     <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="Your name" {...field} readOnly />
+                      <Input placeholder="Your name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -110,7 +112,6 @@ export function AccountForm() {
                       <Input
                         placeholder="https://example.com/image.jpg"
                         {...field}
-                        readOnly
                       />
                     </FormControl>
                     <FormMessage />
@@ -119,7 +120,10 @@ export function AccountForm() {
               />
             </div>
             <div className="text-muted-foreground text-sm">
-              Note: Basic user information are readonly and not editable.
+              Note: Email is readonly and cannot be updated.
+            </div>
+            <div className="flex justify-end">
+              <Button type="button">Save Changes</Button>
             </div>
           </CardContent>
         </Card>
