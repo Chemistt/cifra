@@ -187,3 +187,52 @@ export function uint8ArrayToBase64(array: Uint8Array): string {
 export function base64ToUint8Array(base64: string): Uint8Array {
   return new Uint8Array(base64ToArrayBuffer(base64));
 }
+
+/**
+ * Complete file decryption process
+ * @param {ArrayBuffer} encryptedData - The encrypted file data
+ * @param {string} dekBase64 - Base64 encoded DEK
+ * @param {string} ivBase64 - Base64 encoded IV
+ * @param {string} originalFileName - Original file name
+ * @param {string} originalMimeType - Original MIME type
+ * @returns {Promise<File>} Decrypted file
+ */
+export async function decryptFileComplete(
+  encryptedData: ArrayBuffer,
+  dekBase64: string,
+  ivBase64: string,
+  originalFileName: string,
+  originalMimeType: string,
+): Promise<File> {
+  // Convert base64 DEK and IV back to binary
+  const dekBytes = base64ToArrayBuffer(dekBase64);
+  const iv = base64ToUint8Array(ivBase64);
+
+  // Import the DEK
+  const dek = await importDEK(dekBytes);
+
+  // Decrypt the file
+  const decryptedBuffer = await decryptFile(encryptedData, dek, iv);
+
+  // Create a File object from the decrypted data
+  const decryptedFile = new File([decryptedBuffer], originalFileName, {
+    type: originalMimeType,
+  });
+
+  return decryptedFile;
+}
+
+/**
+ * Download a file by creating a temporary URL and triggering download
+ * @param {File} file - The file to download
+ */
+export function downloadFile(file: File): void {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

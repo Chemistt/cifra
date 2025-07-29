@@ -15,8 +15,9 @@ import {
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+// import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
@@ -49,26 +50,9 @@ import { useTRPC } from "@/trpc/react";
 
 // Infering types from tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
-type FolderItem = RouterOutput["files"]["getFolderContents"][number];
-type SearchResult = RouterOutput["files"]["searchFiles"][number];
+type FolderContents = RouterOutput["files"]["getFolderContents"];
+type SearchContents = RouterOutput["files"]["searchFiles"];
 type BreadcrumbData = { id: string | undefined; name: string };
-
-// Type guards for discriminated union
-const isFolder = (
-  item: FolderItem | SearchResult,
-): item is (FolderItem | SearchResult) & { type: "folder" } => {
-  return item.type === "folder";
-};
-
-const isFile = (
-  item: FolderItem | SearchResult,
-): item is (FolderItem | SearchResult) & { type: "file" } => {
-  return item.type === "file";
-};
-
-// Helper function to check if item has path info (search result)
-const hasPathInfo = (item: FolderItem | SearchResult): item is SearchResult =>
-  "path" in item && Array.isArray(item.path);
 
 // Helper function to format path for display
 const formatPathDisplay = (path: string[]) => {
@@ -99,10 +83,10 @@ const getFileUrl = (storagePath: string): string => {
   return `https://${env.NEXT_PUBLIC_UPLOADTHING_APPID}.ufs.sh/f/${storagePath}`;
 };
 
-const handleDownload = (file: FolderItem & { type: "file" }) => {
-  if (!file.storagePath) return;
-  const fileUrl = getFileUrl(file.storagePath);
-  window.open(fileUrl, "_blank");
+const handleDownload = (path: string) => {
+  if (!path) return;
+  const fileUrl = getFileUrl(path);
+  globalThis.open(fileUrl, "_blank");
 };
 
 // Loading component
@@ -129,12 +113,70 @@ function LoadingView() {
 }
 
 type ViewProps = {
-  foldersToRender: ((FolderItem | SearchResult) & { type: "folder" })[];
-  filesToRender: ((FolderItem | SearchResult) & { type: "file" })[];
+  foldersToRender: FolderContents["folders"] | SearchContents["folders"];
+  filesToRender: FolderContents["files"] | SearchContents["files"];
   navigateToFolder: (folder: { id: string; name: string }) => void;
   startRenaming: (file: { id: string; name: string }) => void;
   onDeleteFile: (fileId: string) => void;
 };
+
+type FileActionsDropdownProps = {
+  file: FolderContents["files"][number] | SearchContents["files"][number];
+  startRenaming: (file: { id: string; name: string }) => void;
+  onDeleteFile: (fileId: string) => void;
+};
+
+function FileActionsDropdown({
+  file,
+  startRenaming,
+  onDeleteFile,
+}: FileActionsDropdownProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm">
+          <MoreVerticalIcon className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => {
+            startRenaming(file);
+          }}
+        >
+          <EditIcon className="mr-2 h-4 w-4" />
+          Rename
+        </DropdownMenuItem>
+        {/* <EncryptedFileDownload file={file}>
+          <DropdownMenuItem>
+            <DownloadIcon className="mr-2 h-4 w-4" />
+            Download (Decrypt)
+          </DropdownMenuItem>
+        </EncryptedFileDownload> */}
+        <DropdownMenuItem
+          onClick={() => {
+            handleDownload(file.storagePath);
+          }}
+        >
+          <DownloadIcon className="mr-2 h-4 w-4" />
+          Download
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <ShareIcon className="mr-2 h-4 w-4" />
+          Share
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            onDeleteFile(file.id);
+          }}
+        >
+          <Trash2Icon className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function GridView({
   foldersToRender,
@@ -146,144 +188,108 @@ function GridView({
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
-      {foldersToRender
-        .filter((item) => isFolder(item))
-        .map((folder) => (
-          <Card
-            key={folder.id}
-            className="cursor-pointer transition-shadow hover:shadow-md"
-            onClick={() => {
-              navigateToFolder(folder);
-            }}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <FolderIcon className="h-8 w-8 text-blue-500" />
-                  {folder.passwordHash && (
-                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="truncate font-medium">{folder.name}</h4>
-                  <p className="text-muted-foreground text-sm">
-                    {formatDate(folder.updatedAt)}
-                  </p>
-                  {hasPathInfo(folder) && folder.path.length > 0 && (
-                    <p className="text-muted-foreground text-xs italic">
-                      📁 {formatPathDisplay(folder.path)}
-                    </p>
-                  )}
-                  {folder.tags.length > 0 && (
-                    <div className="mt-1 flex gap-1">
-                      {folder.tags.slice(0, 2).map((tag) => (
-                        <Badge
-                          key={tag.id}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {tag.name}
-                        </Badge>
-                      ))}
-                      {folder.tags.length > 2 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{folder.tags.length - 2}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                </div>
+      {foldersToRender.map((folder) => (
+        <Card
+          key={folder.id}
+          className="cursor-pointer transition-shadow hover:shadow-md"
+          onClick={() => {
+            navigateToFolder(folder);
+          }}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <FolderIcon className="h-8 w-8 text-blue-500" />
+                {folder.passwordHash && (
+                  <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
+              <div className="min-w-0 flex-1">
+                <h4 className="truncate font-medium">{folder.name}</h4>
+                <p className="text-muted-foreground text-sm">
+                  {formatDate(folder.updatedAt)}
+                </p>
+                {"path" in folder && folder.path.length > 0 && (
+                  <p className="text-muted-foreground text-xs italic">
+                    📁 {formatPathDisplay(folder.path)}
+                  </p>
+                )}
+                {folder.tags.length > 0 && (
+                  <div className="mt-1 flex gap-1">
+                    {folder.tags.slice(0, 2).map((tag) => (
+                      <Badge
+                        key={tag.id}
+                        variant="secondary"
+                        className="text-xs"
+                      >
+                        {tag.name}
+                      </Badge>
+                    ))}
+                    {folder.tags.length > 2 && (
+                      <Badge variant="secondary" className="text-xs">
+                        +{folder.tags.length - 2}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
 
       {/* Files */}
-      {filesToRender.map((item) =>
-        isFile(item) ? (
-          <Card key={item.id} className="transition-shadow hover:shadow-md">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="text-2xl">{getFileIcon(item.mimeType)}</div>
-                  {item.passwordHash && (
-                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="truncate font-medium">{item.name}</h4>
-                  <p className="text-muted-foreground text-sm">
-                    {formatFileSize(item.size)}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {formatDate(item.updatedAt)}
-                  </p>
-                  {hasPathInfo(item) && item.path.length > 0 && (
-                    <p className="text-muted-foreground text-xs italic">
-                      📁 {formatPathDisplay(item.path)}
-                    </p>
-                  )}
-                  {item.tags.length > 0 && (
-                    <div className="mt-1 flex gap-1">
-                      {item.tags.slice(0, 2).map((tag) => (
-                        <Badge
-                          key={tag.id}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {tag.name}
-                        </Badge>
-                      ))}
-                      {item.tags.length > 2 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{item.tags.length - 2}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm">
-                      <MoreVerticalIcon className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        startRenaming(item);
-                      }}
-                    >
-                      <EditIcon className="mr-2 h-4 w-4" />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        handleDownload(item);
-                      }}
-                    >
-                      <DownloadIcon className="mr-2 h-4 w-4" />
-                      Download
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <ShareIcon className="mr-2 h-4 w-4" />
-                      Share
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        onDeleteFile(item.id);
-                      }}
-                    >
-                      <Trash2Icon className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+      {filesToRender.map((files) => (
+        <Card key={files.id} className="transition-shadow hover:shadow-md">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="text-2xl">{getFileIcon(files.mimeType)}</div>
+                {files.passwordHash && (
+                  <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                )}
               </div>
-            </CardContent>
-          </Card>
-        ) : undefined,
-      )}
+              <div className="min-w-0 flex-1">
+                <h4 className="truncate font-medium">{files.name}</h4>
+                <p className="text-muted-foreground text-sm">
+                  {formatFileSize(files.size)}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {formatDate(files.updatedAt)}
+                </p>
+                {"path" in files && files.path.length > 0 && (
+                  <p className="text-muted-foreground text-xs italic">
+                    📁 {formatPathDisplay(files.path)}
+                  </p>
+                )}
+                {files.tags.length > 0 && (
+                  <div className="mt-1 flex gap-1">
+                    {files.tags.slice(0, 2).map((tag) => (
+                      <Badge
+                        key={tag.id}
+                        variant="secondary"
+                        className="text-xs"
+                      >
+                        {tag.name}
+                      </Badge>
+                    ))}
+                    {files.tags.length > 2 && (
+                      <Badge variant="secondary" className="text-xs">
+                        +{files.tags.length - 2}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+              <FileActionsDropdown
+                file={files}
+                startRenaming={startRenaming}
+                onDeleteFile={onDeleteFile}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -298,122 +304,86 @@ function ListView({
   return (
     <div className="space-y-2">
       {/* Folders */}
-      {foldersToRender
-        .filter((item) => isFolder(item))
-        .map((folder) => (
-          <div
-            key={folder.id}
-            className="hover:bg-muted flex cursor-pointer items-center gap-4 rounded-lg p-3"
-            onClick={() => {
-              navigateToFolder(folder);
-            }}
-          >
-            <div className="relative">
-              <FolderIcon className="h-6 w-6 text-blue-500" />
-              {folder.passwordHash && (
-                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className="font-medium">{folder.name}</h4>
-              {hasPathInfo(folder) && folder.path.length > 0 && (
-                <p className="text-muted-foreground text-xs italic">
-                  📁 {formatPathDisplay(folder.path)}
-                </p>
-              )}
-            </div>
-            <div className="text-muted-foreground flex items-center gap-4 text-sm">
-              <span>{formatDate(folder.updatedAt)}</span>
-              <span>Folder</span>
-            </div>
-            {folder.tags.length > 0 && (
-              <div className="flex gap-1">
-                {folder.tags.slice(0, 2).map((tag) => (
-                  <Badge key={tag.id} variant="secondary" className="text-xs">
-                    {tag.name}
-                  </Badge>
-                ))}
-              </div>
+      {foldersToRender.map((folder) => (
+        <div
+          key={folder.id}
+          className="hover:bg-muted flex cursor-pointer items-center gap-4 rounded-lg p-3"
+          onClick={() => {
+            navigateToFolder(folder);
+          }}
+        >
+          <div className="relative">
+            <FolderIcon className="h-6 w-6 text-blue-500" />
+            {folder.passwordHash && (
+              <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
             )}
           </div>
-        ))}
+          <div className="min-w-0 flex-1">
+            <h4 className="font-medium">{folder.name}</h4>
+            {"path" in folder && folder.path.length > 0 && (
+              <p className="text-muted-foreground text-xs italic">
+                📁 {formatPathDisplay(folder.path)}
+              </p>
+            )}
+          </div>
+          <div className="text-muted-foreground flex items-center gap-4 text-sm">
+            <span>{formatDate(folder.updatedAt)}</span>
+            <span>Folder</span>
+          </div>
+          {folder.tags.length > 0 && (
+            <div className="flex gap-1">
+              {folder.tags.slice(0, 2).map((tag) => (
+                <Badge key={tag.id} variant="secondary" className="text-xs">
+                  {tag.name}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
 
       <Separator />
 
       {/* Files */}
-      {filesToRender
-        .filter((item) => isFile(item))
-        .map((file) => (
-          <div
-            key={file.id}
-            className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
-          >
-            <div className="relative">
-              <div className="text-xl">{getFileIcon(file.mimeType)}</div>
-              {file.passwordHash && (
-                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className="font-medium">{file.name}</h4>
-              {hasPathInfo(file) && file.path.length > 0 && (
-                <p className="text-muted-foreground text-xs italic">
-                  📁 {formatPathDisplay(file.path)}
-                </p>
-              )}
-            </div>
-            <div className="text-muted-foreground flex items-center gap-4 text-sm">
-              <span>{formatDate(file.updatedAt)}</span>
-              <span>{formatFileSize(file.size)}</span>
-            </div>
-            {file.tags.length > 0 && (
-              <div className="flex gap-1">
-                {file.tags.slice(0, 2).map((tag) => (
-                  <Badge key={tag.id} variant="secondary" className="text-xs">
-                    {tag.name}
-                  </Badge>
-                ))}
-              </div>
+      {filesToRender.map((file) => (
+        <div
+          key={file.id}
+          className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
+        >
+          <div className="relative">
+            <div className="text-xl">{getFileIcon(file.mimeType)}</div>
+            {file.passwordHash && (
+              <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <MoreVerticalIcon className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => {
-                    startRenaming(file);
-                  }}
-                >
-                  <EditIcon className="mr-2 h-4 w-4" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    handleDownload(file);
-                  }}
-                >
-                  <DownloadIcon className="mr-2 h-4 w-4" />
-                  Download
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <ShareIcon className="mr-2 h-4 w-4" />
-                  Share
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    onDeleteFile(file.id);
-                  }}
-                >
-                  <Trash2Icon className="mr-2 h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
-        ))}
+          <div className="min-w-0 flex-1">
+            <h4 className="font-medium">{file.name}</h4>
+            {"path" in file && file.path.length > 0 && (
+              <p className="text-muted-foreground text-xs italic">
+                📁 {formatPathDisplay(file.path)}
+              </p>
+            )}
+          </div>
+          <div className="text-muted-foreground flex items-center gap-4 text-sm">
+            <span>{formatDate(file.updatedAt)}</span>
+            <span>{formatFileSize(file.size)}</span>
+          </div>
+          {file.tags.length > 0 && (
+            <div className="flex gap-1">
+              {file.tags.slice(0, 2).map((tag) => (
+                <Badge key={tag.id} variant="secondary" className="text-xs">
+                  {tag.name}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <FileActionsDropdown
+            file={file}
+            startRenaming={startRenaming}
+            onDeleteFile={onDeleteFile}
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -437,6 +407,7 @@ export default function FilesPage() {
   const trpc = useTRPC();
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
     { id: undefined, name: "My Files" },
@@ -450,6 +421,17 @@ export default function FilesPage() {
     { id: string; name: string } | undefined
   >();
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   // tRPC Queries
   const { data: folderContents, isLoading: isFolderLoading } = useQuery(
     trpc.files.getFolderContents.queryOptions({
@@ -457,22 +439,31 @@ export default function FilesPage() {
     }),
   );
 
-  // Search query - only execute if searchQuery is not empty
+  // Search query - only execute if debouncedSearchQuery is not empty
   const { data: searchResults, isLoading: isSearchLoading } = useQuery({
     ...trpc.files.searchFiles.queryOptions({
-      query: searchQuery,
+      query: debouncedSearchQuery,
     }),
-    enabled: searchQuery.trim().length > 0, // Only run if there's a search query
+    enabled: debouncedSearchQuery.trim().length > 0, // Only run if there's a debounced search query
   });
 
   // Determine which data to use
   const isLoading =
-    searchQuery.trim().length > 0 ? isSearchLoading : isFolderLoading;
-  const dataToRender = useMemo(() => {
-    return searchQuery.trim().length > 0
-      ? (searchResults ?? [])
-      : (folderContents ?? []);
-  }, [searchQuery, searchResults, folderContents]);
+    debouncedSearchQuery.trim().length > 0 ? isSearchLoading : isFolderLoading;
+
+  const { foldersToRender, filesToRender } = useMemo(() => {
+    return debouncedSearchQuery.trim().length > 0
+      ? {
+          // Use search results
+          foldersToRender: searchResults?.folders ?? [],
+          filesToRender: searchResults?.files ?? [],
+        }
+      : {
+          // Use folder contents
+          foldersToRender: folderContents?.folders ?? [],
+          filesToRender: folderContents?.files ?? [],
+        };
+  }, [debouncedSearchQuery, searchResults, folderContents]);
 
   // Rename file handlers
   const startRenaming = (file: { id: string; name: string }) => {
@@ -492,25 +483,6 @@ export default function FilesPage() {
     setCurrentFolderId(targetFolder?.id);
   };
 
-  // Filter data based on search
-  const filteredItems = useMemo(() => {
-    return dataToRender;
-  }, [dataToRender]);
-
-  // Separate filtered items into folders and files for rendering
-  const { foldersToRender, filesToRender } = useMemo(() => {
-    const folders: ((FolderItem | SearchResult) & { type: "folder" })[] = [];
-    const files: ((FolderItem | SearchResult) & { type: "file" })[] = [];
-    for (const item of filteredItems) {
-      if (isFolder(item)) {
-        folders.push(item);
-      } else if (isFile(item)) {
-        files.push(item);
-      }
-    }
-    return { foldersToRender: folders, filesToRender: files };
-  }, [filteredItems]);
-
   const currentFolderName = breadcrumbs.at(-1)?.name ?? "Files";
 
   const renderContent = () => {
@@ -519,7 +491,7 @@ export default function FilesPage() {
     }
 
     if (foldersToRender.length === 0 && filesToRender.length === 0) {
-      return <EmptyState searchQuery={searchQuery} />;
+      return <EmptyState searchQuery={debouncedSearchQuery} />;
     }
 
     if (viewMode === "grid") {
