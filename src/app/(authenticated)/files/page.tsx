@@ -8,22 +8,27 @@ import {
   FolderIcon,
   HomeIcon,
   InfoIcon,
+  KeyRoundIcon,
   LockIcon,
   MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
   Trash2Icon,
+  UnlockIcon,
   UploadIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
+import { FilePasswordDialog } from "@/components/file-password-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { GlobalDropzone } from "@/components/global-dropzone";
+import { RemovePasswordDialog } from "@/components/remove-password-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -120,6 +125,9 @@ type ViewProps = {
   startRenaming: (file: { id: string; name: string }) => void;
   onDeleteFile: (fileId: string) => void;
   onShowMetadata: (fileId: string) => void;
+  setChangePasswordDialogFileId: (fileId: string) => void;
+  setRemovePasswordDialogFileId: (fileId: string) => void;
+  setPasswordDialogFileId: (fileId: string) => void;
 };
 
 type FileActionsDropdownProps = {
@@ -127,6 +135,9 @@ type FileActionsDropdownProps = {
   startRenaming: (file: { id: string; name: string }) => void;
   onDeleteFile: (fileId: string) => void;
   onShowMetadata: (fileId: string) => void;
+  setChangePasswordDialogFileId: (fileId: string) => void;
+  setRemovePasswordDialogFileId: (fileId: string) => void;
+  setPasswordDialogFileId: (fileId: string) => void;
 };
 
 function FileActionsDropdown({
@@ -134,6 +145,9 @@ function FileActionsDropdown({
   startRenaming,
   onDeleteFile,
   onShowMetadata,
+  setChangePasswordDialogFileId,
+  setRemovePasswordDialogFileId,
+  setPasswordDialogFileId,
 }: FileActionsDropdownProps) {
   return (
     <DropdownMenu>
@@ -176,6 +190,37 @@ function FileActionsDropdown({
             Download
           </DropdownMenuItem>
         )}
+
+        {file.passwordHash ? (
+          <>
+            <DropdownMenuItem
+              onClick={() => {
+                setChangePasswordDialogFileId(file.id);
+              }}
+            >
+              <KeyRoundIcon className="mr-2 h-4 w-4" />
+              Change Password
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onClick={() => {
+                setRemovePasswordDialogFileId(file.id);
+              }}
+            >
+              <UnlockIcon className="mr-2 h-4 w-4" />
+              Remove Password
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <DropdownMenuItem
+            onClick={() => {
+              setPasswordDialogFileId(file.id);
+            }}
+          >
+            <LockIcon className="mr-2 h-4 w-4" />
+            Set Password
+          </DropdownMenuItem>
+        )}
         {/* <DropdownMenuItem>
           <ShareIcon className="mr-2 h-4 w-4" />
           Share
@@ -200,6 +245,9 @@ function GridView({
   startRenaming,
   onDeleteFile,
   onShowMetadata,
+  setChangePasswordDialogFileId,
+  setRemovePasswordDialogFileId,
+  setPasswordDialogFileId,
 }: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -302,6 +350,9 @@ function GridView({
                 startRenaming={startRenaming}
                 onDeleteFile={onDeleteFile}
                 onShowMetadata={onShowMetadata}
+                setChangePasswordDialogFileId={setChangePasswordDialogFileId}
+                setRemovePasswordDialogFileId={setRemovePasswordDialogFileId}
+                setPasswordDialogFileId={setPasswordDialogFileId}
               />
             </div>
           </CardContent>
@@ -318,6 +369,9 @@ function ListView({
   startRenaming,
   onDeleteFile,
   onShowMetadata,
+  setChangePasswordDialogFileId,
+  setRemovePasswordDialogFileId,
+  setPasswordDialogFileId,
 }: ViewProps) {
   return (
     <div className="space-y-2">
@@ -400,6 +454,9 @@ function ListView({
             startRenaming={startRenaming}
             onDeleteFile={onDeleteFile}
             onShowMetadata={onShowMetadata}
+            setChangePasswordDialogFileId={setChangePasswordDialogFileId}
+            setRemovePasswordDialogFileId={setRemovePasswordDialogFileId}
+            setPasswordDialogFileId={setPasswordDialogFileId}
           />
         </div>
       ))}
@@ -428,6 +485,15 @@ export default function FilesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
+  const [changePasswordDialogFileId, setChangePasswordDialogFileId] = useState<
+    string | undefined
+  >();
+  const [removePasswordDialogFileId, setRemovePasswordDialogFileId] = useState<
+    string | undefined
+  >();
+  const [passwordDialogFileId, setPasswordDialogFileId] = useState<
+    string | undefined
+  >();
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
     { id: undefined, name: "My Files" },
   ]);
@@ -531,6 +597,9 @@ export default function FilesPage() {
           startRenaming={startRenaming}
           onDeleteFile={setDeleteDialogFileId}
           onShowMetadata={showMetadata}
+          setChangePasswordDialogFileId={setChangePasswordDialogFileId}
+          setRemovePasswordDialogFileId={setRemovePasswordDialogFileId}
+          setPasswordDialogFileId={setPasswordDialogFileId}
         />
       );
     }
@@ -543,6 +612,9 @@ export default function FilesPage() {
         startRenaming={startRenaming}
         onDeleteFile={setDeleteDialogFileId}
         onShowMetadata={showMetadata}
+        setChangePasswordDialogFileId={setChangePasswordDialogFileId}
+        setRemovePasswordDialogFileId={setRemovePasswordDialogFileId}
+        setPasswordDialogFileId={setPasswordDialogFileId}
       />
     );
   };
@@ -701,6 +773,36 @@ export default function FilesPage() {
             open={!!metadataDrawerFileId}
             onOpenChange={(isOpen) => {
               if (!isOpen) setMetadataDrawerFileId(undefined);
+            }}
+          />
+        )}
+
+        {passwordDialogFileId && (
+          <FilePasswordDialog
+            fileId={passwordDialogFileId}
+            open={!!passwordDialogFileId}
+            onOpenChange={(open) => {
+              if (!open) setPasswordDialogFileId(undefined);
+            }}
+          />
+        )}
+
+        {changePasswordDialogFileId && (
+          <ChangePasswordDialog
+            fileId={changePasswordDialogFileId}
+            open={!!changePasswordDialogFileId}
+            onOpenChange={(open) => {
+              if (!open) setChangePasswordDialogFileId(undefined);
+            }}
+          />
+        )}
+
+        {removePasswordDialogFileId && (
+          <RemovePasswordDialog
+            fileId={removePasswordDialogFileId}
+            open={!!removePasswordDialogFileId}
+            onOpenChange={(open) => {
+              if (!open) setRemovePasswordDialogFileId(undefined);
             }}
           />
         )}

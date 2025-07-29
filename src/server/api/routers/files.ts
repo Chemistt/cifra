@@ -2,8 +2,111 @@
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
-
+import bcrypt from "bcryptjs";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+const PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  password: z.string().min(1, "Password is required"),
+});
+
+const VERIFY_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  password: z.string().min(1, "Password is required"),
+});
+
+const CHANGE_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+});
+
+const REMOVE_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  currentPassword: z.string().min(1),
+});
+
+const verifyFilePassword = protectedProcedure
+  .input(VERIFY_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, password } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { passwordHash: true },
+    });
+
+    if (!file)
+      throw new TRPCError({ code: "NOT_FOUND", message: "File not found" });
+    if (!file.passwordHash) return { valid: true };
+
+    const valid = await bcrypt.compare(password, file.passwordHash);
+    return { valid };
+  });
+
+const changeFilePassword = protectedProcedure
+  .input(CHANGE_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, currentPassword, newPassword } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { passwordHash: true },
+    });
+
+    if (!file?.passwordHash)
+      throw new TRPCError({ code: "NOT_FOUND", message: "No password set" });
+
+    const valid = await bcrypt.compare(currentPassword, file.passwordHash);
+    if (!valid)
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Incorrect current password",
+      });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await ctx.db.file.update({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      data: { passwordHash: newHash },
+    });
+
+    return { success: true };
+  });
+
+const removeFilePassword = protectedProcedure
+  .input(REMOVE_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, currentPassword } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { passwordHash: true },
+    });
+
+    if (!file?.passwordHash)
+      throw new TRPCError({ code: "NOT_FOUND", message: "No password set" });
+
+    const valid = await bcrypt.compare(currentPassword, file.passwordHash);
+    if (!valid)
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Incorrect current password",
+      });
+
+    await ctx.db.file.update({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      data: { passwordHash: null },
+    });
+
+    return { success: true };
+  });
 
 const FolderFolderSchema = z.object({
   id: z.string(),
@@ -661,6 +764,30 @@ export const filesRouter = createTRPCRouter({
         });
       }
     }),
+
+  setFilePassword: protectedProcedure
+    .input(PASSWORD_SCHEMA)
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, password } = input;
+      // Use bcrypt or argon2 in production; here is a placeholder
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      await ctx.db.file.update({
+        where: {
+          id: fileId,
+          ownerId: ctx.session.user.id,
+          deletedAt: undefined,
+        },
+        data: { passwordHash },
+      });
+
+      return { success: true };
+    }),
+
+  verifyFilePassword,
+  changeFilePassword,
+  removeFilePassword,
+
   getFileMetadata: protectedProcedure
     .input(
       z.object({
