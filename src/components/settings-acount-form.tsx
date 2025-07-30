@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useSuspenseQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
-
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Card,
@@ -55,10 +55,10 @@ export function AccountForm() {
         name: data.name,
         image: data.image,
       });
-      alert("Profile updated successfully!");
+      toast.success("Profile updated successfully!");
     } catch (error) {
       console.error("Failed to update profile:", error);
-      alert("Failed to update profile. Please try again.");
+      toast("Failed to update profile. Please try again.");
     }
   };
 
