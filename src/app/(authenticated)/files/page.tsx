@@ -12,7 +12,6 @@ import {
   MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
-  ShareIcon,
   Trash2Icon,
   UploadIcon,
 } from "lucide-react";
@@ -146,19 +145,19 @@ function FileActionsDropdown({
       <DropdownMenuContent align="end">
         <DropdownMenuItem
           onClick={() => {
+            onShowMetadata(file.id);
+          }}
+        >
+          <InfoIcon className="mr-2 h-4 w-4" />
+          File Info
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
             startRenaming(file);
           }}
         >
           <EditIcon className="mr-2 h-4 w-4" />
           Rename
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            onShowMetadata(file.id);
-          }}
-        >
-          <InfoIcon className="mr-2 h-4 w-4" />
-          Info
         </DropdownMenuItem>
         {file.encryptedDeks.length > 0 ? (
           <EncryptedFileDownload file={file}>
@@ -177,17 +176,17 @@ function FileActionsDropdown({
             Download
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem>
+        {/* <DropdownMenuItem>
           <ShareIcon className="mr-2 h-4 w-4" />
           Share
-        </DropdownMenuItem>
+        </DropdownMenuItem> */}
         <DropdownMenuItem
           onClick={() => {
             onDeleteFile(file.id);
           }}
         >
           <Trash2Icon className="mr-2 h-4 w-4" />
-          Delete
+          Delete File
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

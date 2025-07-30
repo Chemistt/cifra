@@ -209,7 +209,8 @@ function FileMetadataContent({ fileId }: { fileId: string }) {
           <div>
             <span className="text-sm font-medium">Folder:</span>
             <p className="text-muted-foreground text-sm">
-              {fileMetadata.folder.name}
+              {/* TODO: handle root folder, type here is wrong */}
+              {fileMetadata.folder.name || "root"}
             </p>
           </div>
           {fileMetadata.folderPath.length > 0 && (
