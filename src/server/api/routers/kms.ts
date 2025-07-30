@@ -417,7 +417,7 @@ export const kmsRouter = createTRPCRouter({
         // Decrypt the DEK using AWS KMS
         const decryptCommand = new DecryptCommand({
           CiphertextBlob: encryptedDEKBuffer,
-          KeyId: userKey.keyIdentifierInKMS, // Optional but helps with performance
+          KeyId: userKey.keyIdentifierInKMS,
         });
 
         const decryptResponse = await client.send(decryptCommand);

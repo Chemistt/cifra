@@ -617,7 +617,9 @@ export const filesRouter = createTRPCRouter({
       }
 
       // Convert encrypted DEK to base64 for transport
-      const encryptedDEKBase64 = latestEncryptedDEK.dekCiphertext.toString();
+      const encryptedDEKBase64 = Buffer.from(
+        latestEncryptedDEK.dekCiphertext,
+      ).toString("base64");
 
       return {
         fileId: file.id,

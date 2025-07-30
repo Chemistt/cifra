@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-// import { EncryptedFileDownload } from "@/components/encrypted-file-download";
+import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
@@ -147,20 +147,23 @@ function FileActionsDropdown({
           <EditIcon className="mr-2 h-4 w-4" />
           Rename
         </DropdownMenuItem>
-        {/* <EncryptedFileDownload file={file}>
-          <DropdownMenuItem>
+        {file.encryptedDeks.length > 0 ? (
+          <EncryptedFileDownload file={file}>
+            <DropdownMenuItem>
+              <DownloadIcon className="mr-2 h-4 w-4" />
+              Download (Encrypted)
+            </DropdownMenuItem>
+          </EncryptedFileDownload>
+        ) : (
+          <DropdownMenuItem
+            onClick={() => {
+              handleDownload(file.storagePath);
+            }}
+          >
             <DownloadIcon className="mr-2 h-4 w-4" />
-            Download (Decrypt)
+            Download
           </DropdownMenuItem>
-        </EncryptedFileDownload> */}
-        <DropdownMenuItem
-          onClick={() => {
-            handleDownload(file.storagePath);
-          }}
-        >
-          <DownloadIcon className="mr-2 h-4 w-4" />
-          Download
-        </DropdownMenuItem>
+        )}
         <DropdownMenuItem>
           <ShareIcon className="mr-2 h-4 w-4" />
           Share
@@ -532,7 +535,7 @@ export default function FilesPage() {
             <EncryptedFileUploadDialog folderId={currentFolderId ?? undefined}>
               <Button variant="outline">
                 <UploadIcon className="mr-2 h-4 w-4" />
-                🔒 Upload
+                Upload
               </Button>
             </EncryptedFileUploadDialog>
             <FolderCreateDialog parentId={currentFolderId ?? undefined}>
