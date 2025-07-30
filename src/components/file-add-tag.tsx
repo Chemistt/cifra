@@ -1,118 +1,144 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X, Plus, TagIcon } from "lucide-react";
 import * as React from "react";
-
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useToast } from "@/components/ui/use-toast";
+import { useTRPC } from "@/trpc/react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import {
-  Command,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Command as CommandPrimitive } from "cmdk";
-import { useCallback } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type Tag = {
   value: string;
   label: string;
 };
 
-export default function FileAddTag() {
-  const [open, setOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState<Tag[]>([]);
-  const [inputValue, setInputValue] = React.useState("");
+type FileAddTagProps = {
+  itemId: string;
+  itemType: "file" | "folder";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+};
 
-  const handleUnselect = useCallback((tag: Tag) => {
+const TAG_SCHEMA = z.object({
+  tag: z.string().min(1, "Tag cannot be empty").max(32, "Tag too long"),
+});
+
+function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTagProps) {
+  const [selected, setSelected] = React.useState<Tag[]>([]);
+  const [internalOpen, setInternalOpen] = React.useState(open);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const trpc = useTRPC();
+
+  // Sync internal open state with prop
+  React.useEffect(() => {
+    setInternalOpen(open);
+  }, [open]);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<{ tag: string }>({
+    resolver: zodResolver(TAG_SCHEMA),
+    defaultValues: { tag: "" },
+  });
+
+  const addTagMutation = useMutation(
+    trpc.files.addTagToItem.mutationOptions({
+      onSuccess: () => {
+        toast({ title: "Tag added successfully!" });
+        queryClient.invalidateQueries({ queryKey: ["files.getFolderContents"] });
+        reset();
+        handleClose();
+      },
+      onError: (error) => {
+        toast({ title: "Failed to add tag", description: error.message });
+      },
+    })
+  );
+
+  const handleClose = () => {
+    setInternalOpen(false);
+    onOpenChange?.(false);
+    reset();
+    setSelected([]);
+  };
+
+  const handleUnselect = React.useCallback((tag: Tag) => {
     setSelected((prev) => prev.filter((s) => s.value !== tag.value));
   }, []);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Backspace" && inputValue === "" && selected.length > 0) {
-        setSelected((prev) => prev.slice(0, -1));
-      } else if (e.key === "Enter" && inputValue.trim() !== "") {
-        const trimmed = inputValue.trim();
-        const exists = selected.some(
-          (c) => c.label.toLowerCase() === trimmed.toLowerCase()
-        );
-        if (!exists) {
-          setSelected((prev) => [
-            ...prev,
-            { value: trimmed.toLowerCase().replace(/\s+/g, "-"), label: trimmed },
-          ]);
-        }
-        setInputValue("");
-      }
-    },
-    [inputValue, selected]
-  );
+  const onSubmit = (data: { tag: string }) => {
+    const trimmed = data.tag.trim();
+    if (trimmed && !selected.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())) {
+      const newTag = {
+        value: trimmed.toLowerCase().replace(/\s+/g, "-"),
+        label: trimmed,
+      };
+      setSelected((prev) => [...prev, newTag]);
+      addTagMutation.mutate({
+        itemId,
+        itemType,
+        tag: trimmed,
+      });
+    }
+  };
 
   return (
-    <div className="w-full">
-      <Command className="overflow-visible">
-        <div className="rounded-md border border-input px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+    <Dialog open={internalOpen} onOpenChange={handleClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a Tag</DialogTitle>
+        </DialogHeader>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="flex flex-col gap-4"
+          autoComplete="off"
+        >
           <div className="flex flex-wrap gap-1">
             {selected.map((tag) => (
-              <Badge
-                key={tag.value}
-                variant="secondary"
-                className="select-none"
-              >
+              <Badge key={tag.value} variant="secondary" className="select-none">
                 {tag.label}
                 <X
                   className="size-3 text-muted-foreground hover:text-foreground ml-2 cursor-pointer"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                  }}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleUnselect(tag)}
                 />
               </Badge>
             ))}
-            <CommandPrimitive.Input
-              onKeyDown={handleKeyDown}
-              onValueChange={setInputValue}
-              value={inputValue}
-              onBlur={() => setOpen(false)}
-              onFocus={() => setOpen(true)}
-              placeholder="Type and press Enter..."
-              className="ml-2 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-            />
           </div>
-        </div>
-        <div className="relative mt-2">
-          <CommandList>
-            {open && inputValue.trim() !== "" && (
-              <div className="absolute top-0 z-10 w-full rounded-md border bg-popover text-popover-foreground shadow-md outline-none">
-                <CommandGroup>
-                  {!selected.some(
-                    (c) =>
-                      c.label.toLowerCase() === inputValue.trim().toLowerCase()
-                  ) && (
-                    <CommandItem
-                      className="cursor-pointer italic text-muted-foreground"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onSelect={() => {
-                        const trimmed = inputValue.trim();
-                        setSelected((prev) => [
-                          ...prev,
-                          {
-                            value: trimmed.toLowerCase().replace(/\s+/g, "-"),
-                            label: trimmed,
-                          },
-                        ]);
-                        setInputValue("");
-                      }}
-                    >
-                      Add "{inputValue.trim()}"
-                    </CommandItem>
-                  )}
-                </CommandGroup>
-              </div>
-            )}
-          </CommandList>
-        </div>
-      </Command>
-    </div>
+          <Input
+            {...register("tag")}
+            placeholder="Type a tag and press Enter"
+            disabled={isSubmitting}
+            autoFocus
+          />
+          {errors.tag && (
+            <span className="text-red-500 text-xs">{errors.tag.message}</span>
+          )}
+          <DialogFooter>
+            <Button type="submit" disabled={isSubmitting}>
+              Add Tag
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">
+                Cancel
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
+
+export { FileAddTag };
+export type { FileAddTagProps };

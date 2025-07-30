@@ -47,7 +47,7 @@ import { formatDate } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
 
-import FileAddTag from "@/components/file-add-tag";
+import { FileAddTag } from "@/components/file-add-tag";
 
 // Infering types from tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -137,6 +137,7 @@ type ViewProps = {
   navigateToFolder: (folder: { id: string; name: string }) => void;
   startRenaming: (file: { id: string; name: string }) => void;
   onDeleteFile: (fileId: string) => void;
+  onShowTag: (itemId: string, itemType: "file" | "folder") => void;
 };
 
 function GridView({
@@ -145,6 +146,7 @@ function GridView({
   navigateToFolder,
   startRenaming,
   onDeleteFile,
+  onShowTag,
 }: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -155,47 +157,82 @@ function GridView({
           <Card
             key={folder.id}
             className="cursor-pointer transition-shadow hover:shadow-md"
-            onClick={() => {
-              navigateToFolder(folder);
-            }}
           >
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="relative">
-                  <FolderIcon className="h-8 w-8 text-blue-500" />
-                  {folder.passwordHash && (
-                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="truncate font-medium">{folder.name}</h4>
-                  <p className="text-muted-foreground text-sm">
-                    {formatDate(folder.updatedAt)}
-                  </p>
-                  {hasPathInfo(folder) && folder.path.length > 0 && (
-                    <p className="text-muted-foreground text-xs italic">
-                      📁 {formatPathDisplay(folder.path)}
-                    </p>
-                  )}
-                  {folder.tags.length > 0 && (
-                    <div className="mt-1 flex gap-1">
-                      {folder.tags.slice(0, 2).map((tag) => (
-                        <Badge
-                          key={tag.id}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {tag.name}
-                        </Badge>
-                      ))}
-                      {folder.tags.length > 2 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{folder.tags.length - 2}
-                        </Badge>
+                <div 
+                  className="relative flex-1"
+                  onClick={() => {
+                    navigateToFolder(folder);
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <FolderIcon className="h-8 w-8 text-blue-500" />
+                      {folder.passwordHash && (
+                        <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
                       )}
                     </div>
-                  )}
+                    <div className="min-w-0 flex-1">
+                      <h4 className="truncate font-medium">{folder.name}</h4>
+                      <p className="text-muted-foreground text-sm">
+                        {formatDate(folder.updatedAt)}
+                      </p>
+                      {hasPathInfo(folder) && folder.path.length > 0 && (
+                        <p className="text-muted-foreground text-xs italic">
+                          📁 {formatPathDisplay(folder.path)}
+                        </p>
+                      )}
+                      {folder.tags.length > 0 && (
+                        <div className="mt-1 flex gap-1">
+                          {folder.tags.slice(0, 2).map((tag) => (
+                            <Badge
+                              key={tag.id}
+                              variant="secondary"
+                              className="text-xs"
+                            >
+                              {tag.name}
+                            </Badge>
+                          ))}
+                          {folder.tags.length > 2 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{folder.tags.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                      <MoreVerticalIcon className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        startRenaming(folder);
+                      }}
+                    >
+                      <EditIcon className="mr-2 h-4 w-4" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <ShareIcon className="mr-2 h-4 w-4" />
+                      Share
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        onShowTag(folder.id, "folder");
+                      }}
+                    >
+                      <TagIcon className="mr-2 h-4 w-4" />
+                      Add Tag
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CardContent>
           </Card>
@@ -280,10 +317,13 @@ function GridView({
                       <Trash2Icon className="mr-2 h-4 w-4" />
                       Delete
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        onShowTag(item.id, "file");
+                      }}
+                    >
                       <TagIcon className="mr-2 h-4 w-4" />
                       Add Tag
-                      <FileAddTag itemId={item.id} itemType="file" />
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -299,9 +339,10 @@ function GridView({
 function ListView({
   foldersToRender,
   filesToRender,
+  onShowTag,
   navigateToFolder,
   startRenaming,
-  onDeleteFile,
+  onDeleteFile
 }: ViewProps) {
   return (
     <div className="space-y-2">
@@ -311,38 +352,69 @@ function ListView({
         .map((folder) => (
           <div
             key={folder.id}
-            className="hover:bg-muted flex cursor-pointer items-center gap-4 rounded-lg p-3"
-            onClick={() => {
-              navigateToFolder(folder);
-            }}
+            className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
           >
-            <div className="relative">
-              <FolderIcon className="h-6 w-6 text-blue-500" />
-              {folder.passwordHash && (
-                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className="font-medium">{folder.name}</h4>
-              {hasPathInfo(folder) && folder.path.length > 0 && (
-                <p className="text-muted-foreground text-xs italic">
-                  📁 {formatPathDisplay(folder.path)}
-                </p>
-              )}
-            </div>
-            <div className="text-muted-foreground flex items-center gap-4 text-sm">
-              <span>{formatDate(folder.updatedAt)}</span>
-              <span>Folder</span>
-            </div>
-            {folder.tags.length > 0 && (
-              <div className="flex gap-1">
-                {folder.tags.slice(0, 2).map((tag) => (
-                  <Badge key={tag.id} variant="secondary" className="text-xs">
-                    {tag.name}
-                  </Badge>
-                ))}
+            <div 
+              className="relative flex-1 flex items-center gap-4 cursor-pointer"
+              onClick={() => {
+                navigateToFolder(folder);
+              }}
+            >
+              <div className="relative">
+                <FolderIcon className="h-6 w-6 text-blue-500" />
+                {folder.passwordHash && (
+                  <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                )}
               </div>
-            )}
+              <div className="min-w-0 flex-1">
+                <h4 className="font-medium">{folder.name}</h4>
+                {hasPathInfo(folder) && folder.path.length > 0 && (
+                  <p className="text-muted-foreground text-xs italic">
+                    📁 {formatPathDisplay(folder.path)}
+                  </p>
+                )}
+              </div>
+              <div className="text-muted-foreground flex items-center gap-4 text-sm">
+                <span>{formatDate(folder.updatedAt)}</span>
+                <span>Folder</span>
+              </div>
+              {folder.tags.length > 0 && (
+                <div className="flex gap-1">
+                  {folder.tags.slice(0, 2).map((tag) => (
+                    <Badge key={tag.id} variant="secondary" className="text-xs">
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreVerticalIcon className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    startRenaming(folder);
+                  }}
+                >
+                  <EditIcon className="mr-2 h-4 w-4" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <ShareIcon className="mr-2 h-4 w-4" />
+                  Share
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onShowTag(folder.id, "folder")}
+                >
+                  <TagIcon className="mr-2 h-4 w-4" />
+                  Add Tag
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ))}
 
@@ -418,13 +490,14 @@ function ListView({
                   <Trash2Icon className="mr-2 h-4 w-4" />
                   Delete
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <TagIcon className="mr-2 h-4 w-4" />
-                  Add Tag
-                  <FileAddTag itemId={file.id} itemType="file" />
-                </DropdownMenuItem>
+                <DropdownMenuItem
+                onClick={() => onShowTag(file.id, "file")}
+              >
+                <TagIcon className="mr-2 h-4 w-4" />
+                Add Tag
+              </DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+              </DropdownMenu>
           </div>
         ))}
     </div>
@@ -464,6 +537,15 @@ export default function FilesPage() {
     { id: string; name: string } | undefined
   >();
 
+  const [showTagDialogFor, setShowTagDialogFor] = useState<{
+    id: string;
+    type: "file" | "folder";
+  } | undefined>(undefined);
+
+  function handleShowTag(itemId: string, itemType: "file" | "folder") {
+    setShowTagDialogFor({ id: itemId, type: itemType });
+  }
+  
   // tRPC Queries
   const {
     data: folderContents,
@@ -558,6 +640,7 @@ export default function FilesPage() {
           navigateToFolder={navigateToFolder}
           startRenaming={startRenaming}
           onDeleteFile={setDeleteDialogFileId}
+          onShowTag={handleShowTag}
         />
       );
     }
@@ -569,6 +652,7 @@ export default function FilesPage() {
         navigateToFolder={navigateToFolder}
         startRenaming={startRenaming}
         onDeleteFile={setDeleteDialogFileId}
+        onShowTag={handleShowTag}
       />
     );
   };
@@ -723,6 +807,18 @@ export default function FilesPage() {
           onFileRenamed={() => {
             void refetch();
             setRenameDialogFile(undefined);
+          }}
+        />
+      )}
+
+      {/* File Add Tag Dialog */}
+      {showTagDialogFor && (
+        <FileAddTag
+          itemId={showTagDialogFor.id}
+          itemType={showTagDialogFor.type}
+          open={!!showTagDialogFor}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setShowTagDialogFor(undefined);
           }}
         />
       )}
