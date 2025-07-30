@@ -16,7 +16,6 @@ import { useTRPC } from "@/trpc/react";
 type FileRenameDialogProps = {
   fileId: string;
   fileName: string;
-  onFileRenamed: () => void;
   open: boolean;
   onOpenChange: (isOpen: boolean) => void;
 };
@@ -24,7 +23,6 @@ type FileRenameDialogProps = {
 export function FileRenameDialog({
   fileId,
   fileName,
-  onFileRenamed,
   open,
   onOpenChange,
 }: FileRenameDialogProps) {
@@ -33,6 +31,7 @@ export function FileRenameDialog({
   const [newName, setNewName] = useState(fileName);
 
   // Reset the input when dialog opens or file changes
+  // TODO: Use react-hook-form to handle this and reset
   useEffect(() => {
     if (open) {
       setNewName(fileName);
@@ -43,7 +42,6 @@ export function FileRenameDialog({
     trpc.files.renameFile.mutationOptions({
       onSuccess: () => {
         toast.success("File renamed successfully");
-        onFileRenamed();
         onOpenChange(false);
         void queryClient.invalidateQueries({
           queryKey: trpc.files.getFolderContents.queryKey(),
