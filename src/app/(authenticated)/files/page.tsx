@@ -14,6 +14,7 @@ import {
   ShareIcon,
   Trash2Icon,
   UploadIcon,
+  TagIcon
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -45,6 +46,8 @@ import { env } from "@/env";
 import { formatDate } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
+
+import FileAddTag from "@/components/file-add-tag";
 
 // Infering types from tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -103,6 +106,7 @@ const handleDownload = (file: FolderItem & { type: "file" }) => {
   const fileUrl = getFileUrl(file.storagePath);
   window.open(fileUrl, "_blank");
 };
+
 
 // Loading component
 function LoadingView() {
@@ -224,7 +228,7 @@ function GridView({
                   )}
                   {item.tags.length > 0 && (
                     <div className="mt-1 flex gap-1">
-                      {item.tags.slice(0, 2).map((tag) => (
+                      {item.tags.slice(0, 2).map((tag: { id: string; name: string }) => (
                         <Badge
                           key={tag.id}
                           variant="secondary"
@@ -275,6 +279,11 @@ function GridView({
                     >
                       <Trash2Icon className="mr-2 h-4 w-4" />
                       Delete
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <TagIcon className="mr-2 h-4 w-4" />
+                      Add Tag
+                      <FileAddTag itemId={item.id} itemType="file" />
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -409,6 +418,11 @@ function ListView({
                   <Trash2Icon className="mr-2 h-4 w-4" />
                   Delete
                 </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <TagIcon className="mr-2 h-4 w-4" />
+                  Add Tag
+                  <FileAddTag itemId={file.id} itemType="file" />
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -430,6 +444,7 @@ function EmptyState({ searchQuery }: { searchQuery: string }) {
     </div>
   );
 }
+
 
 // Main component
 export default function FilesPage() {

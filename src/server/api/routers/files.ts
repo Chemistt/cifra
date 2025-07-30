@@ -4,6 +4,12 @@ import { z } from "zod/v4";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 
+const ADD_TAG_SCHEMA = z.object({
+  itemId: z.string(),
+  itemType: z.union([z.literal("file"), z.literal("folder")]),
+  tag: z.string().min(1).max(32),
+});
+
 export const filesRouter = createTRPCRouter({
   getFolderContents: protectedProcedure
     .input(
@@ -411,5 +417,61 @@ export const filesRouter = createTRPCRouter({
           message: "File not found or already deleted.",
         });
       }
+    }),
+
+    addTagToItem: protectedProcedure
+    .input(ADD_TAG_SCHEMA)
+    .mutation(async ({ ctx, input }) => {
+      const { itemId, itemType, tag } = input;
+      const userId = ctx.session.user.id;
+
+      // Find or create the tag for the user
+      const userTag = await ctx.db.userTags.upsert({
+        where: {
+          ownerId_name: {
+            ownerId: userId,
+            name: tag,
+          },
+        },
+        update: {},
+        create: {
+          ownerId: userId,
+          name: tag,
+        },
+      });
+
+      // Connect the tag to the file or folder
+      if (itemType === "file") {
+        await ctx.db.fileTag.upsert({
+          where: {
+            fileId_tagId: {
+              fileId: itemId,
+              tagId: userTag.id,
+            },
+          },
+          update: {},
+          create: {
+            fileId: itemId,
+            tagId: userTag.id,
+            assignedBy: userId,
+          },
+        });
+      } else {
+        await ctx.db.folderTag.upsert({
+          where: {
+            folderId_tagId: {
+              folderId: itemId,
+              tagId: userTag.id,
+            },
+          },
+          update: {},
+          create: {
+            folderId: itemId,
+            tagId: userTag.id,
+            assignedBy: userId,
+          },
+        });
+      }
+      return { success: true };
     }),
 });
