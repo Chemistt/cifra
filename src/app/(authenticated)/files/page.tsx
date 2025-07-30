@@ -74,7 +74,7 @@ const handleUnencryptedDownload = (path: string) => {
 };
 
 // Loading component
-function LoadingView() {
+export function LoadingView() {
   return (
     <div className="space-y-4">
       {/* Grid view skeletons */}

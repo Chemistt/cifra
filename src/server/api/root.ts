@@ -1,3 +1,4 @@
+import { deletedRouter } from "@/server/api/routers/deleted";
 import { filesRouter } from "@/server/api/routers/files";
 import { kmsRouter } from "@/server/api/routers/kms";
 import { passkeyRouter } from "@/server/api/routers/passkey";
@@ -15,6 +16,7 @@ export const appRouter = createTRPCRouter({
   passkey: passkeyRouter,
   totp: totpRouter,
   files: filesRouter,
+  deleted: deletedRouter,
   kms: kmsRouter,
 });
 
