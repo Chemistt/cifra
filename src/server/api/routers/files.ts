@@ -1,8 +1,9 @@
 /* eslint-disable unicorn/no-null */
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
-import { z } from "zod/v4";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
+
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 
 const PASSWORD_SCHEMA = z.object({

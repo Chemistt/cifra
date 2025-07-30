@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 import { createCaller } from "@/server/api/root";
 import { getServerSession } from "@/server/auth";
