@@ -1,11 +1,12 @@
 import {
   CreateAliasCommand,
   CreateKeyCommand,
+  DecryptCommand,
   DeleteAliasCommand,
+  EncryptCommand,
   KeySpec,
   KeyUsageType,
   KMSClient,
-  ListKeysCommand,
   OriginType,
   ScheduleKeyDeletionCommand,
   UpdateKeyDescriptionCommand,
@@ -18,15 +19,6 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 const client = new KMSClient({ region: "ap-southeast-1" });
 
 export const kmsRouter = createTRPCRouter({
-  test: protectedProcedure.query(async ({ ctx }) => {
-    console.log(ctx.session.user.id);
-    const command = new ListKeysCommand({
-      Limit: 10,
-    });
-    const response = await client.send(command);
-    return response;
-  }),
-
   getKeys: protectedProcedure.query(async ({ ctx }) => {
     const { user } = ctx.session;
     const keys = await ctx.db.userKey.findMany({
@@ -330,5 +322,130 @@ export const kmsRouter = createTRPCRouter({
         totalDEKs,
         key: existingKey,
       };
+    }),
+
+  encryptDEK: protectedProcedure
+    .input(z.string())
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+
+      try {
+        // If no kekId provided, use the primary key
+        const keyToUse = await ctx.db.userKey.findFirst({
+          where: {
+            userId: user.id,
+            isPrimary: true,
+          },
+        });
+
+        if (!keyToUse) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No primary key found. Please create a key first.",
+          });
+        }
+
+        // Convert base64 DEK to buffer for encryption
+        const dekBuffer = Buffer.from(input, "base64");
+
+        // Encrypt the DEK using AWS KMS
+        const encryptCommand = new EncryptCommand({
+          KeyId: keyToUse.keyIdentifierInKMS,
+          Plaintext: dekBuffer,
+        });
+
+        const encryptResponse = await client.send(encryptCommand);
+
+        if (!encryptResponse.CiphertextBlob) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to encrypt DEK",
+          });
+        }
+
+        // Convert encrypted DEK to base64 for transport over tRPC
+        const encryptedDEKBuffer = Buffer.from(encryptResponse.CiphertextBlob);
+        const encryptedDEKBase64 = encryptedDEKBuffer.toString("base64");
+
+        return {
+          encryptedDEK: encryptedDEKBase64,
+          keyId: keyToUse.id,
+          keyIdentifierInKMS: keyToUse.keyIdentifierInKMS,
+        };
+      } catch (error) {
+        console.error("Error encrypting DEK:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to encrypt DEK. Please try again.",
+        });
+      }
+    }),
+
+  decryptDEK: protectedProcedure
+    .input(
+      z.object({
+        encryptedDEKBase64: z.string(),
+        keyId: z.string(), // ID of the UserKey used to encrypt the DEK
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { encryptedDEKBase64, keyId } = input;
+
+      try {
+        // Verify the key belongs to the user
+        const userKey = await ctx.db.userKey.findFirst({
+          where: {
+            id: keyId,
+            userId: user.id,
+          },
+        });
+
+        if (!userKey) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Encryption key not found",
+          });
+        }
+
+        // Convert base64 encrypted DEK to buffer for decryption
+        const encryptedDEKBuffer = Buffer.from(encryptedDEKBase64, "base64");
+
+        // Decrypt the DEK using AWS KMS
+        const decryptCommand = new DecryptCommand({
+          CiphertextBlob: encryptedDEKBuffer,
+          KeyId: userKey.keyIdentifierInKMS,
+        });
+
+        const decryptResponse = await client.send(decryptCommand);
+
+        if (!decryptResponse.Plaintext) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to decrypt DEK",
+          });
+        }
+
+        // Convert decrypted DEK to base64 for transport
+        const dekBuffer = Buffer.from(decryptResponse.Plaintext);
+        const dekBase64 = dekBuffer.toString("base64");
+
+        return {
+          dekBase64,
+          keyId: userKey.id,
+        };
+      } catch (error) {
+        console.error("Error decrypting DEK:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to decrypt DEK. Please try again.",
+        });
+      }
     }),
 });

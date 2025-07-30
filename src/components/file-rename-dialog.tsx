@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,6 +29,7 @@ export function FileRenameDialog({
   onOpenChange,
 }: FileRenameDialogProps) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [newName, setNewName] = useState(fileName);
 
   // Reset the input when dialog opens or file changes
@@ -44,6 +45,9 @@ export function FileRenameDialog({
         toast.success("File renamed successfully");
         onFileRenamed();
         onOpenChange(false);
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
       },
       onError: (error) => {
         toast.error(error.message);
