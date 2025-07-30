@@ -16,15 +16,13 @@ import { useTRPC } from "@/trpc/react";
 type FileDeleteDialogProps = {
   fileId: string;
   fileName: string;
-  onFileDeleted: () => void;
-  open: boolean; // Controlled open state
-  onOpenChange: (isOpen: boolean) => void; // Callback to update open state
+  open: boolean;
+  onOpenChange: (isOpen: boolean) => void;
 };
 
 export function FileDeleteDialog({
   fileId,
   fileName,
-  onFileDeleted,
   open,
   onOpenChange,
 }: FileDeleteDialogProps) {
@@ -35,7 +33,6 @@ export function FileDeleteDialog({
     trpc.files.deleteFile.mutationOptions({
       onSuccess: () => {
         toast.success(`File "${fileName}" deleted successfully.`);
-        onFileDeleted();
         onOpenChange(false);
         void queryClient.invalidateQueries({
           queryKey: trpc.files.getFolderContents.queryKey(),

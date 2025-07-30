@@ -1,9 +1,113 @@
 /* eslint-disable unicorn/no-null */
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
-import { z } from "zod/v4";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+
+const PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  password: z.string().min(1, "Password is required"),
+});
+
+const VERIFY_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  password: z.string().min(1, "Password is required"),
+});
+
+const CHANGE_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+});
+
+const REMOVE_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  currentPassword: z.string().min(1),
+});
+
+const verifyFilePassword = protectedProcedure
+  .input(VERIFY_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, password } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { passwordHash: true },
+    });
+
+    if (!file)
+      throw new TRPCError({ code: "NOT_FOUND", message: "File not found" });
+    if (!file.passwordHash) return { valid: true };
+
+    const valid = await bcrypt.compare(password, file.passwordHash);
+    return { valid };
+  });
+
+const changeFilePassword = protectedProcedure
+  .input(CHANGE_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, currentPassword, newPassword } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { passwordHash: true },
+    });
+
+    if (!file?.passwordHash)
+      throw new TRPCError({ code: "NOT_FOUND", message: "No password set" });
+
+    const valid = await bcrypt.compare(currentPassword, file.passwordHash);
+    if (!valid)
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Incorrect current password",
+      });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await ctx.db.file.update({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      data: { passwordHash: newHash },
+    });
+
+    return { success: true };
+  });
+
+const removeFilePassword = protectedProcedure
+  .input(REMOVE_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, currentPassword } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { passwordHash: true },
+    });
+
+    if (!file?.passwordHash)
+      throw new TRPCError({ code: "NOT_FOUND", message: "No password set" });
+
+    const valid = await bcrypt.compare(currentPassword, file.passwordHash);
+    if (!valid)
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Incorrect current password",
+      });
+
+    await ctx.db.file.update({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      data: { passwordHash: null },
+    });
+
+    return { success: true };
+  });
 
 const FolderFolderSchema = z.object({
   id: z.string(),
@@ -661,4 +765,153 @@ export const filesRouter = createTRPCRouter({
         });
       }
     }),
+
+  setFilePassword: protectedProcedure
+    .input(PASSWORD_SCHEMA)
+    .mutation(async ({ ctx, input }) => {
+      const { fileId, password } = input;
+      // Use bcrypt or argon2 in production; here is a placeholder
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      await ctx.db.file.update({
+        where: {
+          id: fileId,
+          ownerId: ctx.session.user.id,
+          deletedAt: undefined,
+        },
+        data: { passwordHash },
+      });
+
+      return { success: true };
+    }),
+
+  verifyFilePassword,
+  changeFilePassword,
+  removeFilePassword,
+
+  getFileMetadata: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { fileId } = input;
+
+      // Fetch comprehensive file metadata
+      const file = await ctx.db.file.findFirst({
+        where: {
+          id: fileId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          folder: {
+            select: {
+              id: true,
+              name: true,
+              parentId: true,
+            },
+          },
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+          encryptedDeks: {
+            include: {
+              kekUsed: {
+                select: {
+                  id: true,
+                  alias: true,
+                  keyIdentifierInKMS: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+          sharedFiles: {
+            select: {
+              id: true,
+              folderPath: true,
+              uploadedById: true,
+            },
+          },
+        },
+      });
+
+      if (!file) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission to view it",
+        });
+      }
+
+      // Get full folder path
+      const getFolderPath = async (folderId: string): Promise<string[]> => {
+        const folder = await ctx.db.folder.findUnique({
+          where: { id: folderId },
+          select: { name: true, parentId: true },
+        });
+
+        if (!folder?.parentId) {
+          return folder?.name ? [folder.name] : [];
+        }
+
+        const parentPath = await getFolderPath(folder.parentId);
+        return [...parentPath, folder.name];
+      };
+
+      const folderPath = await getFolderPath(file.folderId);
+
+      // Format file size
+      const fileSizeFormatted = formatFileSize(file.size);
+
+      return {
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        sizeFormatted: fileSizeFormatted,
+        mimeType: file.mimeType,
+        storagePath: file.storagePath,
+        md5: file.md5,
+        version: file.version,
+        passwordProtected: !!file.passwordHash,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+        deletedAt: file.deletedAt,
+        owner: file.owner,
+        folder: file.folder,
+        folderPath,
+        tags: file.tags.map((tagRelation) => tagRelation.tag),
+        encryptionKeys: file.encryptedDeks,
+        sharedFiles: file.sharedFiles,
+        // Additional calculated metadata
+        isImage: file.mimeType.startsWith("image/"),
+        isVideo: file.mimeType.startsWith("video/"),
+        isAudio: file.mimeType.startsWith("audio/"),
+        isPDF: file.mimeType.includes("pdf"),
+        isDocument:
+          file.mimeType.includes("document") || file.mimeType.includes("word"),
+        fileExtension: file.name.split(".").pop()?.toLowerCase() ?? "",
+      };
+    }),
 });
+
+// Helper function for file size formatting
+function formatFileSize(bytes: bigint): string {
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+  if (bytes === BigInt(0)) return "0 Bytes";
+  const k = 1024;
+  const index = Math.floor(Math.log(Number(bytes)) / Math.log(k));
+  return `${String(Math.round((Number(bytes) / Math.pow(k, index)) * 100) / 100)} ${String(sizes[index])}`;
+}
