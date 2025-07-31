@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getAvatarInitials } from "@/lib/utils";
 import { useTRPC } from "@/trpc/react";
+import React, { useRef, useState } from "react";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -49,6 +50,24 @@ export function AccountForm() {
 
   const initials = getAvatarInitials(user.name);
 
+  // Step 1: Add local state for image preview and file input reference
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.image);
+
+  // Step 2: Handle image selection
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result?.toString() ?? "";
+        setPreviewUrl(result); // Preview the image
+        form.setValue("image", result); // Update form field
+      };
+      reader.readAsDataURL(file); // Convert to Base64
+    }
+  };
+
   const onSubmit = async (data: z.infer<typeof schema>) => {
     try {
       await updateProfile.mutateAsync({
@@ -71,11 +90,25 @@ export function AccountForm() {
             <CardDescription>Update your personal information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Step 3: Replace Avatar with clickable version */}
             <div className="flex items-center gap-6">
-              <Avatar className="h-20 w-20">
-                <AvatarImage src={user.image ?? ""} alt={user.name ?? "User"} />
-                <AvatarFallback className="text-lg">{initials}</AvatarFallback>
-              </Avatar>
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="cursor-pointer"
+                title="Click to change profile picture"
+              >
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={previewUrl ?? ""} alt={user.name ?? "User"} />
+                  <AvatarFallback className="text-lg">{initials}</AvatarFallback>
+                </Avatar>
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                onChange={handleImageChange}
+                style={{ display: "none" }}
+              />
               <div>
                 <h3 className="text-lg font-medium">{user.name}</h3>
                 <p className="text-muted-foreground text-sm">{user.role}</p>
