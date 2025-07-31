@@ -60,7 +60,7 @@ export function AccountForm() {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const result = reader.result?.toString() ?? "";
+        const result = typeof reader.result === "string" ? reader.result : "";
         setPreviewUrl(result); // Preview the image
         form.setValue("image", result); // Update form field
       };
@@ -93,7 +93,7 @@ export function AccountForm() {
             {/* Step 3: Replace Avatar with clickable version */}
             <div className="flex items-center gap-6">
               <div
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => fileInputRef.current?.click()}  //allows User to replace profile image using their computer
                 className="cursor-pointer"
                 title="Click to change profile picture"
               >
