@@ -33,15 +33,12 @@ export function FileDeleteDialog({
     trpc.files.deleteFile.mutationOptions({
       onSuccess: () => {
         toast.success(`File "${fileName}" deleted successfully.`);
-        // Invalidate deleted files query to refresh deleted page
+        // Invalidate both deleted files and folder contents queries
         void queryClient.invalidateQueries({
-          predicate: (query) => {
-            return (
-              query.queryKey[0] === "deleted" ||
-              (Array.isArray(query.queryKey[0]) &&
-                query.queryKey[0][0] === "deleted")
-            );
-          },
+          queryKey: trpc.deleted.getDeletedFiles.queryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
         });
         onOpenChange(false); // Close the dialog
       },

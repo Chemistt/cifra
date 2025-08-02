@@ -63,7 +63,6 @@ export const deletedRouter = createTRPCRouter({
 
       return {
         ...file,
-        type: "file" as const,
         tags: file.tags.map((tagRelation) => tagRelation.tag),
         daysRemaining,
       };

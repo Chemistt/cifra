@@ -11,6 +11,7 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { LoadingView } from "@/components/loading-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,12 +30,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { formatDate } from "@/lib/utils";
-import { formatFileSize, getFileIcon } from "@/lib/utils";
+import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
-
-import { LoadingView } from "../files/page";
 
 // Constants
 const FILE_RETENTION_DAYS = 30;
@@ -216,16 +214,12 @@ export default function DeletedPage() {
           filesToRender.find((file) => file.id === variables.id)?.name ??
           "File";
         toast.success(`File "${fileName}" restored successfully.`);
-        // Invalidate using predicate for broader matching
+        // Invalidate both deleted files and main files queries
         void queryClient.invalidateQueries({
-          predicate: (query) => {
-            return (
-              query.queryKey[0] === "deleted" ||
-              (Array.isArray(query.queryKey[0]) &&
-                (query.queryKey[0][0] === "deleted" ||
-                  query.queryKey[0][0] === "files"))
-            );
-          },
+          queryKey: trpc.deleted.getDeletedFiles.queryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
         });
       },
       onError: (error) => {
@@ -241,13 +235,7 @@ export default function DeletedPage() {
           toast.success(result.message);
           // Invalidate deleted files query to refresh the list
           void queryClient.invalidateQueries({
-            predicate: (query) => {
-              return (
-                query.queryKey[0] === "deleted" ||
-                (Array.isArray(query.queryKey[0]) &&
-                  query.queryKey[0][0] === "deleted")
-              );
-            },
+            queryKey: trpc.deleted.getDeletedFiles.queryKey(),
           });
         },
         onError: (error) => {
