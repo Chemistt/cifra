@@ -28,6 +28,7 @@ import { FilePasswordDialog } from "@/components/file-password-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { GlobalDropzone } from "@/components/global-dropzone";
+import { LoadingView } from "@/components/loading-view";
 import { RemovePasswordDialog } from "@/components/remove-password-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -48,7 +49,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { env } from "@/env";
 import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
@@ -72,29 +72,6 @@ const handleUnencryptedDownload = (path: string) => {
     "_blank",
   );
 };
-
-// Loading component
-function LoadingView() {
-  return (
-    <div className="space-y-4">
-      {/* Grid view skeletons */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 12 }).map((_, index) => (
-          // eslint-disable-next-line @eslint-react/no-array-index-key
-          <div key={index} className="rounded-lg border p-4">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-8 w-8 rounded" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 type FileAction =
   | { type: "rename"; file: { id: string; name: string } }
