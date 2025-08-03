@@ -13,9 +13,11 @@ import {
   MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
+  TagIcon,
   Trash2Icon,
   UnlockIcon,
   UploadIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -41,6 +43,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +51,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { env } from "@/env";
 import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
@@ -386,15 +402,24 @@ function ListView({
   );
 }
 
-function EmptyState({ searchQuery }: { searchQuery: string }) {
+function EmptyState({ 
+  searchQuery, 
+  hasTagFilters 
+}: { 
+  searchQuery: string; 
+  hasTagFilters: boolean; 
+}) {
+  const hasFilters = searchQuery || hasTagFilters;
+  
   return (
     <div className="py-12 text-center">
       <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
       <h3 className="mb-2 text-lg font-medium">No files found</h3>
       <p className="text-muted-foreground">
-        {searchQuery
-          ? "Try adjusting your search query"
-          : "This folder is empty. Upload some files to get started."}
+        {hasFilters 
+          ? "Try adjusting your search query or tag filters"
+          : "This folder is empty. Upload some files to get started."
+        }
       </p>
     </div>
   );
@@ -406,6 +431,8 @@ export default function FilesPage() {
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tagMatchMode, setTagMatchMode] = useState<"any" | "all">("any");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [changePasswordDialogFileId, setChangePasswordDialogFileId] = useState<
     string | undefined
@@ -450,31 +477,43 @@ export default function FilesPage() {
     }),
   );
 
-  // Search query - only execute if debouncedSearchQuery is not empty
+  // Get user tags for filtering
+  const { data: userTags } = useQuery(trpc.files.getUserTags.queryOptions());
+
+  // Search query - execute if debouncedSearchQuery is not empty OR tags are selected
   const { data: searchResults, isLoading: isSearchLoading } = useQuery({
     ...trpc.files.searchFiles.queryOptions({
       query: debouncedSearchQuery,
+      tagIds: selectedTagIds,
+      tagMatchMode,
     }),
-    enabled: debouncedSearchQuery.trim().length > 0, // Only run if there's a debounced search query
+    enabled: debouncedSearchQuery.trim().length > 0 || selectedTagIds.length > 0,
   });
 
   // Determine which data to use
   const isLoading =
-    debouncedSearchQuery.trim().length > 0 ? isSearchLoading : isFolderLoading;
+    debouncedSearchQuery.trim().length > 0 || selectedTagIds.length > 0
+      ? isSearchLoading 
+      : isFolderLoading;
 
   const { foldersToRender, filesToRender } = useMemo(() => {
-    return debouncedSearchQuery.trim().length > 0
-      ? {
-          // Use search results
-          foldersToRender: searchResults?.folders ?? [],
-          filesToRender: searchResults?.files ?? [],
-        }
-      : {
-          // Use folder contents
-          foldersToRender: folderContents?.folders ?? [],
-          filesToRender: folderContents?.files ?? [],
-        };
-  }, [debouncedSearchQuery, searchResults, folderContents]);
+    const hasSearchQuery = debouncedSearchQuery.trim().length > 0;
+    const hasTagFilters = selectedTagIds.length > 0;
+    
+    if (hasSearchQuery || hasTagFilters) {
+      return {
+        // Use search results
+        foldersToRender: searchResults?.folders ?? [],
+        filesToRender: searchResults?.files ?? [],
+      };
+    }
+    
+    return {
+      // Use folder contents
+      foldersToRender: folderContents?.folders ?? [],
+      filesToRender: folderContents?.files ?? [],
+    };
+  }, [debouncedSearchQuery, selectedTagIds, searchResults, folderContents]);
 
   // File action handler
   const handleFileAction = (action: FileAction) => {
@@ -509,6 +548,23 @@ export default function FilesPage() {
     }
   };
 
+  // Tag filtering handlers
+  const handleTagToggle = (tagId: string) => {
+    setSelectedTagIds((previous) =>
+      previous.includes(tagId)
+        ? previous.filter((id) => id !== tagId)
+        : [...previous, tagId],
+    );
+  };
+
+  const handleRemoveTag = (tagId: string) => {
+    setSelectedTagIds((previous) => previous.filter((id) => id !== tagId));
+  };
+
+  const handleClearAllTags = () => {
+    setSelectedTagIds([]);
+  };
+
   // Navigation functions
   const navigateToFolder = (folder: { id: string; name: string }) => {
     setCurrentFolderId(folder.id);
@@ -530,7 +586,12 @@ export default function FilesPage() {
     }
 
     if (foldersToRender.length === 0 && filesToRender.length === 0) {
-      return <EmptyState searchQuery={debouncedSearchQuery} />;
+      return (
+        <EmptyState 
+          searchQuery={debouncedSearchQuery} 
+          hasTagFilters={selectedTagIds.length > 0} 
+        />
+      );
     }
 
     if (viewMode === "grid") {
@@ -595,7 +656,113 @@ export default function FilesPage() {
                 className="pl-10"
               />
             </div>
+
+            {/* Tag Filter */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <TagIcon className="h-4 w-4" />
+                  Tags
+                  {selectedTagIds.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">
+                      {selectedTagIds.length}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Filter by tags</Label>
+                    <Select 
+                      value={tagMatchMode} 
+                      onValueChange={(value: "any" | "all") => {
+                        setTagMatchMode(value);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Match any tag</SelectItem>
+                        <SelectItem value="all">Match all tags</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="max-h-48 space-y-2 overflow-y-auto">
+                    {userTags?.map((tag) => (
+                      <div key={tag.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={tag.id}
+                          checked={selectedTagIds.includes(tag.id)}
+                          onCheckedChange={() => {
+                            handleTagToggle(tag.id);
+                          }}
+                        />
+                        <Label
+                          htmlFor={tag.id}
+                          className="flex-1 cursor-pointer text-sm"
+                        >
+                          {tag.name}
+                        </Label>
+                        <span className="text-muted-foreground text-xs">
+                          {tag.totalCount}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {selectedTagIds.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleClearAllTags}
+                      className="w-full"
+                    >
+                      Clear all filters
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
+
+          {/* Active Tag Filters */}
+          {selectedTagIds.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <span className="text-muted-foreground text-sm">Active filters:</span>
+              {selectedTagIds.map((tagId) => {
+                const tag = userTags?.find((t) => t.id === tagId);
+                return tag ? (
+                  <Badge
+                    key={tagId}
+                    variant="secondary"
+                    className="gap-1"
+                  >
+                    {tag.name}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleRemoveTag(tagId);
+                      }}
+                      className="hover:bg-secondary-foreground/20 rounded-full p-0.5"
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ) : undefined;
+              })}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearAllTags}
+                className="h-auto p-1 text-xs"
+              >
+                Clear all
+              </Button>
+            </div>
+          )}
 
           {/* Breadcrumbs */}
           <Breadcrumb>

@@ -27,6 +27,14 @@ const REMOVE_PASSWORD_SCHEMA = z.object({
   currentPassword: z.string().min(1),
 });
 
+const UserTagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  fileCount: z.number(),
+  folderCount: z.number(),
+  totalCount: z.number(),
+});
+
 const verifyFilePassword = protectedProcedure
   .input(VERIFY_PASSWORD_SCHEMA)
   .mutation(async ({ ctx, input }) => {
@@ -497,32 +505,73 @@ export const filesRouter = createTRPCRouter({
     .input(
       z.object({
         query: z.string(),
+        tagIds: z.array(z.string()).optional(),
+        tagMatchMode: z.enum(["any", "all"]).default("any"),
       }),
     )
     .query(async ({ ctx, input }) => {
       const { user } = ctx.session;
       const userId = user.id;
-      const { query } = input;
+      const { query, tagIds, tagMatchMode } = input;
 
-      // If no query is provided, return empty results
-      if (!query.trim()) {
+      // If no query and no tags are provided, return empty results
+      if (!query.trim() && (!tagIds || tagIds.length === 0)) {
         return FolderSearchContentSchema.parse({
           files: [],
           folders: [],
         });
       }
 
+      // Build search conditions for folders and files
+      const baseCondition = {
+        ownerId: userId,
+        deletedAt: null,
+      };
+
+      // Build text search condition
+      const textCondition = query.trim()
+        ? {
+            name: {
+              contains: query,
+              mode: "insensitive" as const,
+            },
+          }
+        : {};
+
+      // Build tag filter conditions
+      const tagCondition = tagIds && tagIds.length > 0
+        ? tagMatchMode === "all"
+          ? {
+              AND: tagIds.map((tagId) => ({
+                tags: {
+                  some: {
+                    tagId,
+                  },
+                },
+              })),
+            }
+          : {
+              tags: {
+                some: {
+                  tagId: {
+                    in: tagIds,
+                  },
+                },
+              },
+            }
+        : {};
+
+      // Combine all conditions
+      const whereCondition = {
+        ...baseCondition,
+        ...textCondition,
+        ...tagCondition,
+      };
+
       // Search directly across all user's folders and files
       const [matchingFolders, matchingFiles] = await Promise.all([
         ctx.db.folder.findMany({
-          where: {
-            ownerId: userId,
-            deletedAt: null,
-            name: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
+          where: whereCondition,
           select: {
             id: true,
             name: true,
@@ -544,14 +593,7 @@ export const filesRouter = createTRPCRouter({
           take: 50, // Limit results for performance
         }),
         ctx.db.file.findMany({
-          where: {
-            ownerId: userId,
-            deletedAt: null,
-            name: {
-              contains: query,
-              mode: "insensitive",
-            },
-          },
+          where: whereCondition,
           select: {
             id: true,
             name: true,
@@ -904,6 +946,33 @@ export const filesRouter = createTRPCRouter({
           file.mimeType.includes("document") || file.mimeType.includes("word"),
         fileExtension: file.name.split(".").pop()?.toLowerCase() ?? "",
       };
+    }),
+  getUserTags: protectedProcedure
+    .output(z.array(UserTagSchema))
+    .query(async ({ ctx }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+
+      const tags = await ctx.db.userTags.findMany({
+        where: { ownerId: userId },
+        include: {
+          _count: {
+            select: {
+              fileTags: true,
+              folderTags: true,
+            },
+          },
+        },
+        orderBy: { name: "asc" },
+      });
+
+      return tags.map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        fileCount: tag._count.fileTags,
+        folderCount: tag._count.folderTags,
+        totalCount: tag._count.fileTags + tag._count.folderTags,
+      }));
     }),
 });
 
