@@ -12,12 +12,13 @@ import {
   PlusIcon,
   SearchIcon,
   ShareIcon,
+  TagIcon,
   Trash2Icon,
   UploadIcon,
-  TagIcon
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { FileAddTag } from "@/components/file-add-tag";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
 import { FileUploadDialog } from "@/components/file-upload-dialog";
@@ -46,8 +47,6 @@ import { env } from "@/env";
 import { formatDate } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
-
-import { FileAddTag } from "@/components/file-add-tag";
 
 // Infering types from tRPC router for full type safety
 type RouterOutput = inferRouterOutputs<AppRouter>;
@@ -107,7 +106,6 @@ const handleDownload = (file: FolderItem & { type: "file" }) => {
   window.open(fileUrl, "_blank");
 };
 
-
 // Loading component
 function LoadingView() {
   return (
@@ -160,7 +158,7 @@ function GridView({
           >
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div 
+                <div
                   className="relative flex-1"
                   onClick={() => {
                     navigateToFolder(folder);
@@ -206,7 +204,13 @@ function GridView({
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                    >
                       <MoreVerticalIcon className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -265,15 +269,17 @@ function GridView({
                   )}
                   {item.tags.length > 0 && (
                     <div className="mt-1 flex gap-1">
-                      {item.tags.slice(0, 2).map((tag: { id: string; name: string }) => (
-                        <Badge
-                          key={tag.id}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {tag.name}
-                        </Badge>
-                      ))}
+                      {item.tags
+                        .slice(0, 2)
+                        .map((tag: { id: string; name: string }) => (
+                          <Badge
+                            key={tag.id}
+                            variant="secondary"
+                            className="text-xs"
+                          >
+                            {tag.name}
+                          </Badge>
+                        ))}
                       {item.tags.length > 2 && (
                         <Badge variant="secondary" className="text-xs">
                           +{item.tags.length - 2}
@@ -342,7 +348,7 @@ function ListView({
   onShowTag,
   navigateToFolder,
   startRenaming,
-  onDeleteFile
+  onDeleteFile,
 }: ViewProps) {
   return (
     <div className="space-y-2">
@@ -354,8 +360,8 @@ function ListView({
             key={folder.id}
             className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
           >
-            <div 
-              className="relative flex-1 flex items-center gap-4 cursor-pointer"
+            <div
+              className="relative flex flex-1 cursor-pointer items-center gap-4"
               onClick={() => {
                 navigateToFolder(folder);
               }}
@@ -408,7 +414,9 @@ function ListView({
                   Share
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => onShowTag(folder.id, "folder")}
+                  onClick={() => {
+                    onShowTag(folder.id, "folder");
+                  }}
                 >
                   <TagIcon className="mr-2 h-4 w-4" />
                   Add Tag
@@ -491,13 +499,15 @@ function ListView({
                   Delete
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                onClick={() => onShowTag(file.id, "file")}
-              >
-                <TagIcon className="mr-2 h-4 w-4" />
-                Add Tag
-              </DropdownMenuItem>
+                  onClick={() => {
+                    onShowTag(file.id, "file");
+                  }}
+                >
+                  <TagIcon className="mr-2 h-4 w-4" />
+                  Add Tag
+                </DropdownMenuItem>
               </DropdownMenuContent>
-              </DropdownMenu>
+            </DropdownMenu>
           </div>
         ))}
     </div>
@@ -518,7 +528,6 @@ function EmptyState({ searchQuery }: { searchQuery: string }) {
   );
 }
 
-
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
@@ -537,15 +546,18 @@ export default function FilesPage() {
     { id: string; name: string } | undefined
   >();
 
-  const [showTagDialogFor, setShowTagDialogFor] = useState<{
-    id: string;
-    type: "file" | "folder";
-  } | undefined>(undefined);
+  const [showTagDialogFor, setShowTagDialogFor] = useState<
+    | {
+        id: string;
+        type: "file" | "folder";
+      }
+    | undefined
+  >();
 
   function handleShowTag(itemId: string, itemType: "file" | "folder") {
     setShowTagDialogFor({ id: itemId, type: itemType });
   }
-  
+
   // tRPC Queries
   const {
     data: folderContents,

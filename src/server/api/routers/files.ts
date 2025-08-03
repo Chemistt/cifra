@@ -406,11 +406,11 @@ export const filesRouter = createTRPCRouter({
           },
           data: { deletedAt: new Date() },
         });
-    
+
         return deletedFile;
       } catch (error) {
         if (error instanceof TRPCError) {
-          throw error; 
+          throw error;
         }
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -419,7 +419,7 @@ export const filesRouter = createTRPCRouter({
       }
     }),
 
-    addTagToItem: protectedProcedure
+  addTagToItem: protectedProcedure
     .input(ADD_TAG_SCHEMA)
     .mutation(async ({ ctx, input }) => {
       const { itemId, itemType, tag } = input;
@@ -441,37 +441,35 @@ export const filesRouter = createTRPCRouter({
       });
 
       // Connect the tag to the file or folder
-      if (itemType === "file") {
-        await ctx.db.fileTag.upsert({
-          where: {
-            fileId_tagId: {
+      await (itemType === "file"
+        ? ctx.db.fileTag.upsert({
+            where: {
+              fileId_tagId: {
+                fileId: itemId,
+                tagId: userTag.id,
+              },
+            },
+            update: {},
+            create: {
               fileId: itemId,
               tagId: userTag.id,
+              assignedBy: userId,
             },
-          },
-          update: {},
-          create: {
-            fileId: itemId,
-            tagId: userTag.id,
-            assignedBy: userId,
-          },
-        });
-      } else {
-        await ctx.db.folderTag.upsert({
-          where: {
-            folderId_tagId: {
+          })
+        : ctx.db.folderTag.upsert({
+            where: {
+              folderId_tagId: {
+                folderId: itemId,
+                tagId: userTag.id,
+              },
+            },
+            update: {},
+            create: {
               folderId: itemId,
               tagId: userTag.id,
+              assignedBy: userId,
             },
-          },
-          update: {},
-          create: {
-            folderId: itemId,
-            tagId: userTag.id,
-            assignedBy: userId,
-          },
-        });
-      }
+          }));
       return { success: true };
     }),
 });

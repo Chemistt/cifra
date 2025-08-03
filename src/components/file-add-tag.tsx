@@ -1,17 +1,25 @@
 "use client";
 
-import { X, Plus, TagIcon } from "lucide-react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useToast } from "@/components/ui/use-toast";
-import { useTRPC } from "@/trpc/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useTRPC } from "@/trpc/react";
 
 type Tag = {
   value: string;
@@ -29,11 +37,15 @@ const TAG_SCHEMA = z.object({
   tag: z.string().min(1, "Tag cannot be empty").max(32, "Tag too long"),
 });
 
-function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTagProps) {
+function FileAddTag({
+  itemId,
+  itemType,
+  open = false,
+  onOpenChange,
+}: FileAddTagProps) {
   const [selected, setSelected] = React.useState<Tag[]>([]);
   const [internalOpen, setInternalOpen] = React.useState(open);
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const trpc = useTRPC();
 
   // Sync internal open state with prop
@@ -54,15 +66,17 @@ function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTag
   const addTagMutation = useMutation(
     trpc.files.addTagToItem.mutationOptions({
       onSuccess: () => {
-        toast({ title: "Tag added successfully!" });
-        queryClient.invalidateQueries({ queryKey: ["files.getFolderContents"] });
+        toast.success("Tag added successfully!");
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
         reset();
         handleClose();
       },
       onError: (error) => {
-        toast({ title: "Failed to add tag", description: error.message });
+        toast.error("Failed to add tag", { description: error.message });
       },
-    })
+    }),
   );
 
   const handleClose = () => {
@@ -73,17 +87,20 @@ function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTag
   };
 
   const handleUnselect = React.useCallback((tag: Tag) => {
-    setSelected((prev) => prev.filter((s) => s.value !== tag.value));
+    setSelected((previous) => previous.filter((s) => s.value !== tag.value));
   }, []);
 
   const onSubmit = (data: { tag: string }) => {
     const trimmed = data.tag.trim();
-    if (trimmed && !selected.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())) {
+    if (
+      trimmed &&
+      !selected.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())
+    ) {
       const newTag = {
-        value: trimmed.toLowerCase().replace(/\s+/g, "-"),
+        value: trimmed.toLowerCase().replaceAll(/\s+/g, "-"),
         label: trimmed,
       };
-      setSelected((prev) => [...prev, newTag]);
+      setSelected((previous) => [...previous, newTag]);
       addTagMutation.mutate({
         itemId,
         itemType,
@@ -99,18 +116,29 @@ function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTag
           <DialogTitle>Add a Tag</DialogTitle>
         </DialogHeader>
         <form
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit(onSubmit)();
+          }}
           className="flex flex-col gap-4"
           autoComplete="off"
         >
           <div className="flex flex-wrap gap-1">
             {selected.map((tag) => (
-              <Badge key={tag.value} variant="secondary" className="select-none">
+              <Badge
+                key={tag.value}
+                variant="secondary"
+                className="select-none"
+              >
                 {tag.label}
                 <X
-                  className="size-3 text-muted-foreground hover:text-foreground ml-2 cursor-pointer"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleUnselect(tag)}
+                  className="text-muted-foreground hover:text-foreground ml-2 size-3 cursor-pointer"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => {
+                    handleUnselect(tag);
+                  }}
                 />
               </Badge>
             ))}
@@ -122,7 +150,7 @@ function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTag
             autoFocus
           />
           {errors.tag && (
-            <span className="text-red-500 text-xs">{errors.tag.message}</span>
+            <span className="text-xs text-red-500">{errors.tag.message}</span>
           )}
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting}>
