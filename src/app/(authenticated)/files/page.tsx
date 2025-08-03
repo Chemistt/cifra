@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
+import { FileAddTag } from "@/components/file-add-tag";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
 import { FilePasswordDialog } from "@/components/file-password-dialog";
@@ -101,15 +102,21 @@ type ViewProps = {
   foldersToRender: FolderContents["folders"] | SearchContents["folders"];
   filesToRender: FolderContents["files"] | SearchContents["files"];
   navigateToFolder: (folder: { id: string; name: string }) => void;
+  onShowTag: (itemId: string, itemType: "file" | "folder") => void;
   onFileAction: (action: FileAction) => void;
 };
 
 type FileActionsDropdownProps = {
   file: FolderContents["files"][number] | SearchContents["files"][number];
+  onShowTag: (itemId: string, itemType: "file" | "folder") => void;
   onFileAction: (action: FileAction) => void;
 };
 
-function FileActionsDropdown({ file, onFileAction }: FileActionsDropdownProps) {
+function FileActionsDropdown({
+  file,
+  onShowTag,
+  onFileAction,
+}: FileActionsDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -191,6 +198,14 @@ function FileActionsDropdown({ file, onFileAction }: FileActionsDropdownProps) {
         </DropdownMenuItem> */}
         <DropdownMenuItem
           onClick={() => {
+            onShowTag(file.id, "file");
+          }}
+        >
+          <TagIcon className="mr-2 h-4 w-4" />
+          Add Tag
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
             onFileAction({ type: "delete", fileId: file.id });
           }}
         >
@@ -206,6 +221,7 @@ function GridView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
+  onShowTag,
   onFileAction,
 }: ViewProps) {
   return (
@@ -304,7 +320,11 @@ function GridView({
                   </div>
                 )}
               </div>
-              <FileActionsDropdown file={files} onFileAction={onFileAction} />
+              <FileActionsDropdown
+                file={files}
+                onFileAction={onFileAction}
+                onShowTag={onShowTag}
+              />
             </div>
           </CardContent>
         </Card>
@@ -317,6 +337,7 @@ function ListView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
+  onShowTag,
   onFileAction,
 }: ViewProps) {
   return (
@@ -395,31 +416,34 @@ function ListView({
               ))}
             </div>
           )}
-          <FileActionsDropdown file={file} onFileAction={onFileAction} />
+          <FileActionsDropdown
+            file={file}
+            onFileAction={onFileAction}
+            onShowTag={onShowTag}
+          />
         </div>
       ))}
     </div>
   );
 }
 
-function EmptyState({ 
-  searchQuery, 
-  hasTagFilters 
-}: { 
-  searchQuery: string; 
-  hasTagFilters: boolean; 
+function EmptyState({
+  searchQuery,
+  hasTagFilters,
+}: {
+  searchQuery: string;
+  hasTagFilters: boolean;
 }) {
   const hasFilters = searchQuery || hasTagFilters;
-  
+
   return (
     <div className="py-12 text-center">
       <FolderIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
       <h3 className="mb-2 text-lg font-medium">No files found</h3>
       <p className="text-muted-foreground">
-        {hasFilters 
+        {hasFilters
           ? "Try adjusting your search query or tag filters"
-          : "This folder is empty. Upload some files to get started."
-        }
+          : "This folder is empty. Upload some files to get started."}
       </p>
     </div>
   );
@@ -459,6 +483,10 @@ export default function FilesPage() {
     string | undefined
   >();
 
+  const [showTagDialog, setShowTagDialog] = useState<
+    { id: string; type: "file" | "folder" } | undefined
+  >();
+
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -487,19 +515,20 @@ export default function FilesPage() {
       tagIds: selectedTagIds,
       tagMatchMode,
     }),
-    enabled: debouncedSearchQuery.trim().length > 0 || selectedTagIds.length > 0,
+    enabled:
+      debouncedSearchQuery.trim().length > 0 || selectedTagIds.length > 0,
   });
 
   // Determine which data to use
   const isLoading =
     debouncedSearchQuery.trim().length > 0 || selectedTagIds.length > 0
-      ? isSearchLoading 
+      ? isSearchLoading
       : isFolderLoading;
 
   const { foldersToRender, filesToRender } = useMemo(() => {
     const hasSearchQuery = debouncedSearchQuery.trim().length > 0;
     const hasTagFilters = selectedTagIds.length > 0;
-    
+
     if (hasSearchQuery || hasTagFilters) {
       return {
         // Use search results
@@ -507,7 +536,7 @@ export default function FilesPage() {
         filesToRender: searchResults?.files ?? [],
       };
     }
-    
+
     return {
       // Use folder contents
       foldersToRender: folderContents?.folders ?? [],
@@ -565,6 +594,10 @@ export default function FilesPage() {
     setSelectedTagIds([]);
   };
 
+  const handleShowTag = (itemId: string, itemType: "file" | "folder") => {
+    setShowTagDialog({ id: itemId, type: itemType });
+  };
+
   // Navigation functions
   const navigateToFolder = (folder: { id: string; name: string }) => {
     setCurrentFolderId(folder.id);
@@ -587,9 +620,9 @@ export default function FilesPage() {
 
     if (foldersToRender.length === 0 && filesToRender.length === 0) {
       return (
-        <EmptyState 
-          searchQuery={debouncedSearchQuery} 
-          hasTagFilters={selectedTagIds.length > 0} 
+        <EmptyState
+          searchQuery={debouncedSearchQuery}
+          hasTagFilters={selectedTagIds.length > 0}
         />
       );
     }
@@ -600,6 +633,7 @@ export default function FilesPage() {
           foldersToRender={foldersToRender}
           filesToRender={filesToRender}
           navigateToFolder={navigateToFolder}
+          onShowTag={handleShowTag}
           onFileAction={handleFileAction}
         />
       );
@@ -610,6 +644,7 @@ export default function FilesPage() {
         foldersToRender={foldersToRender}
         filesToRender={filesToRender}
         navigateToFolder={navigateToFolder}
+        onShowTag={handleShowTag}
         onFileAction={handleFileAction}
       />
     );
@@ -673,9 +708,11 @@ export default function FilesPage() {
               <PopoverContent className="w-80">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Filter by tags</Label>
-                    <Select 
-                      value={tagMatchMode} 
+                    <Label className="text-sm font-medium">
+                      Filter by tags
+                    </Label>
+                    <Select
+                      value={tagMatchMode}
                       onValueChange={(value: "any" | "all") => {
                         setTagMatchMode(value);
                       }}
@@ -731,15 +768,13 @@ export default function FilesPage() {
           {/* Active Tag Filters */}
           {selectedTagIds.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              <span className="text-muted-foreground text-sm">Active filters:</span>
+              <span className="text-muted-foreground text-sm">
+                Active filters:
+              </span>
               {selectedTagIds.map((tagId) => {
                 const tag = userTags?.find((t) => t.id === tagId);
                 return tag ? (
-                  <Badge
-                    key={tagId}
-                    variant="secondary"
-                    className="gap-1"
-                  >
+                  <Badge key={tagId} variant="secondary" className="gap-1">
                     {tag.name}
                     <button
                       type="button"
@@ -899,6 +934,17 @@ export default function FilesPage() {
             open={!!removePasswordDialogFileId}
             onOpenChange={(open) => {
               if (!open) setRemovePasswordDialogFileId(undefined);
+            }}
+          />
+        )}
+
+        {showTagDialog && (
+          <FileAddTag
+            itemId={showTagDialog.id}
+            itemType={showTagDialog.type}
+            open={!!showTagDialog}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setShowTagDialog(undefined);
             }}
           />
         )}

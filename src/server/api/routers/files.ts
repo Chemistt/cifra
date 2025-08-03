@@ -539,27 +539,28 @@ export const filesRouter = createTRPCRouter({
         : {};
 
       // Build tag filter conditions
-      const tagCondition = tagIds && tagIds.length > 0
-        ? tagMatchMode === "all"
-          ? {
-              AND: tagIds.map((tagId) => ({
+      const tagCondition =
+        tagIds && tagIds.length > 0
+          ? tagMatchMode === "all"
+            ? {
+                AND: tagIds.map((tagId) => ({
+                  tags: {
+                    some: {
+                      tagId,
+                    },
+                  },
+                })),
+              }
+            : {
                 tags: {
                   some: {
-                    tagId,
+                    tagId: {
+                      in: tagIds,
+                    },
                   },
                 },
-              })),
-            }
-          : {
-              tags: {
-                some: {
-                  tagId: {
-                    in: tagIds,
-                  },
-                },
-              },
-            }
-        : {};
+              }
+          : {};
 
       // Combine all conditions
       const whereCondition = {
@@ -973,6 +974,65 @@ export const filesRouter = createTRPCRouter({
         folderCount: tag._count.folderTags,
         totalCount: tag._count.fileTags + tag._count.folderTags,
       }));
+    }),
+  addTagToItem: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.string(),
+        itemType: z.union([z.literal("file"), z.literal("folder")]),
+        tag: z.string().min(1).max(32),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { itemId, itemType, tag } = input;
+      const userId = ctx.session.user.id;
+
+      // Find or create the tag for the user
+      const userTag = await ctx.db.userTags.upsert({
+        where: {
+          ownerId_name: {
+            ownerId: userId,
+            name: tag,
+          },
+        },
+        update: {},
+        create: {
+          ownerId: userId,
+          name: tag,
+        },
+      });
+
+      // Connect the tag to the file or folder
+      await (itemType === "file"
+        ? ctx.db.fileTag.upsert({
+            where: {
+              fileId_tagId: {
+                fileId: itemId,
+                tagId: userTag.id,
+              },
+            },
+            update: {},
+            create: {
+              fileId: itemId,
+              tagId: userTag.id,
+              assignedBy: userId,
+            },
+          })
+        : ctx.db.folderTag.upsert({
+            where: {
+              folderId_tagId: {
+                folderId: itemId,
+                tagId: userTag.id,
+              },
+            },
+            update: {},
+            create: {
+              folderId: itemId,
+              tagId: userTag.id,
+              assignedBy: userId,
+            },
+          }));
+      return { success: true };
     }),
 });
 
