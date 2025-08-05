@@ -70,6 +70,7 @@ import { env } from "@/env";
 import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
+import { DownloadPasswordDialog } from "@/components/download-password-dialog";
 
 type RouterOutput = inferRouterOutputs<AppRouter>;
 type FolderContents = RouterOutput["files"]["getFolderContents"];
@@ -104,18 +105,21 @@ type ViewProps = {
   navigateToFolder: (folder: { id: string; name: string }) => void;
   onShowTag: (itemId: string, itemType: "file" | "folder") => void;
   onFileAction: (action: FileAction) => void;
+  onDownload: (file: FolderContents["files"][number] | SearchContents["files"][number]) => void;
 };
 
 type FileActionsDropdownProps = {
   file: FolderContents["files"][number] | SearchContents["files"][number];
   onShowTag: (itemId: string, itemType: "file" | "folder") => void;
   onFileAction: (action: FileAction) => void;
+  onDownload: (file: FolderContents["files"][number] | SearchContents["files"][number]) => void;
 };
 
 function FileActionsDropdown({
   file,
   onShowTag,
   onFileAction,
+  onDownload,
 }: FileActionsDropdownProps) {
   return (
     <DropdownMenu>
@@ -153,13 +157,20 @@ function FileActionsDropdown({
           </EncryptedFileDownload>
         ) : (
           <DropdownMenuItem
-            onClick={() => {
+          onClick={() => {
+            if (file.passwordHash) {
+              onDownload(file);
+            } else if (file.encryptedDeks.length > 0) {
+              // Optionally, trigger EncryptedFileDownload logic here
+              // Or keep as is if handled elsewhere
+            } else {
               handleUnencryptedDownload(file.storagePath);
-            }}
-          >
-            <DownloadIcon className="mr-2 h-4 w-4" />
-            Download
-          </DropdownMenuItem>
+            }
+          }}
+        >
+          <DownloadIcon className="mr-2 h-4 w-4" />
+          Download
+        </DropdownMenuItem>
         )}
 
         {file.passwordHash ? (
@@ -223,6 +234,7 @@ function GridView({
   navigateToFolder,
   onShowTag,
   onFileAction,
+  onDownload,
 }: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -324,6 +336,7 @@ function GridView({
                 file={files}
                 onFileAction={onFileAction}
                 onShowTag={onShowTag}
+                onDownload={onDownload}
               />
             </div>
           </CardContent>
@@ -339,6 +352,7 @@ function ListView({
   navigateToFolder,
   onShowTag,
   onFileAction,
+  onDownload,
 }: ViewProps) {
   return (
     <div className="space-y-2">
@@ -420,6 +434,7 @@ function ListView({
             file={file}
             onFileAction={onFileAction}
             onShowTag={onShowTag}
+            onDownload={onDownload}
           />
         </div>
       ))}
@@ -458,6 +473,8 @@ export default function FilesPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagMatchMode, setTagMatchMode] = useState<"any" | "all">("any");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
+  const [downloadDialogFile, setDownloadDialogFile] = useState<FolderContents["files"][number] | SearchContents["files"][number] | undefined>();
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
   const [changePasswordDialogFileId, setChangePasswordDialogFileId] = useState<
     string | undefined
   >();
@@ -635,6 +652,10 @@ export default function FilesPage() {
           navigateToFolder={navigateToFolder}
           onShowTag={handleShowTag}
           onFileAction={handleFileAction}
+          onDownload={(file) => {
+        setDownloadDialogFile(file);
+        setDownloadDialogOpen(true);
+      }}
         />
       );
     }
@@ -646,6 +667,10 @@ export default function FilesPage() {
         navigateToFolder={navigateToFolder}
         onShowTag={handleShowTag}
         onFileAction={handleFileAction}
+        onDownload={(file) => {
+        setDownloadDialogFile(file);
+        setDownloadDialogOpen(true);
+      }}
       />
     );
   };
@@ -947,6 +972,19 @@ export default function FilesPage() {
               if (!isOpen) setShowTagDialog(undefined);
             }}
           />
+        )}
+
+        {downloadDialogFile && (
+          <DownloadPasswordDialog
+            fileId={downloadDialogFile.id}
+            fileName={downloadDialogFile.name}
+            storagePath={downloadDialogFile.storagePath}
+            open={downloadDialogOpen}
+            onOpenChange={(open) => {
+              setDownloadDialogOpen(open);
+              if (!open) setDownloadDialogFile(undefined);
+              }}
+          />      
         )}
       </div>
     </GlobalDropzone>
