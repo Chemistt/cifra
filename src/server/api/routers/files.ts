@@ -474,4 +474,152 @@ export const filesRouter = createTRPCRouter({
       }
       return { success: true };
     }),
+
+  getItemTags: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.string(),
+        itemType: z.union([z.literal("file"), z.literal("folder")]),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { itemId, itemType } = input;
+      const userId = ctx.session.user.id;
+
+      if (itemType === "file") {
+        // First verify the file belongs to the user
+        const file = await ctx.db.file.findFirst({
+          where: {
+            id: itemId,
+            ownerId: userId,
+            deletedAt: null,
+          },
+        });
+
+        if (!file) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "File not found",
+          });
+        }
+
+        const fileTags = await ctx.db.fileTag.findMany({
+          where: { fileId: itemId },
+          include: { tag: true },
+        });
+
+        return fileTags.map((tagRelation) => ({
+          id: tagRelation.tag.id,
+          name: tagRelation.tag.name,
+        }));
+      } else {
+        // First verify the folder belongs to the user
+        const folder = await ctx.db.folder.findFirst({
+          where: {
+            id: itemId,
+            ownerId: userId,
+            deletedAt: null,
+          },
+        });
+
+        if (!folder) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Folder not found",
+          });
+        }
+
+        const folderTags = await ctx.db.folderTag.findMany({
+          where: { folderId: itemId },
+          include: { tag: true },
+        });
+
+        return folderTags.map((tagRelation) => ({
+          id: tagRelation.tag.id,
+          name: tagRelation.tag.name,
+        }));
+      }
+    }),
+
+  removeTagFromItem: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.string(),
+        itemType: z.union([z.literal("file"), z.literal("folder")]),
+        tagId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { itemId, itemType, tagId } = input;
+      const userId = ctx.session.user.id;
+
+      // Verify the tag belongs to the user
+      const userTag = await ctx.db.userTags.findFirst({
+        where: {
+          id: tagId,
+          ownerId: userId,
+        },
+      });
+
+      if (!userTag) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tag not found",
+        });
+      }
+
+      if (itemType === "file") {
+        // Verify the file belongs to the user
+        const file = await ctx.db.file.findFirst({
+          where: {
+            id: itemId,
+            ownerId: userId,
+            deletedAt: null,
+          },
+        });
+
+        if (!file) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "File not found",
+          });
+        }
+
+        await ctx.db.fileTag.delete({
+          where: {
+            fileId_tagId: {
+              fileId: itemId,
+              tagId: tagId,
+            },
+          },
+        });
+      } else {
+        // Verify the folder belongs to the user
+        const folder = await ctx.db.folder.findFirst({
+          where: {
+            id: itemId,
+            ownerId: userId,
+            deletedAt: null,
+          },
+        });
+
+        if (!folder) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Folder not found",
+          });
+        }
+
+        await ctx.db.folderTag.delete({
+          where: {
+            folderId_tagId: {
+              folderId: itemId,
+              tagId: tagId,
+            },
+          },
+        });
+      }
+
+      return { success: true };
+    }),
 });

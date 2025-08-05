@@ -1,21 +1,29 @@
 "use client";
 
-import { X, Plus, TagIcon } from "lucide-react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useToast } from "@/components/ui/use-toast";
-import { useTRPC } from "@/trpc/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useTRPC } from "@/trpc/react";
 
 type Tag = {
-  value: string;
-  label: string;
+  id: string;
+  name: string;
 };
 
 type FileAddTagProps = {
@@ -29,17 +37,41 @@ const TAG_SCHEMA = z.object({
   tag: z.string().min(1, "Tag cannot be empty").max(32, "Tag too long"),
 });
 
-function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTagProps) {
-  const [selected, setSelected] = React.useState<Tag[]>([]);
+function FileAddTag({
+  itemId,
+  itemType,
+  open = false,
+  onOpenChange,
+}: FileAddTagProps) {
+  const [tags, setTags] = React.useState<Tag[]>([]);
+  const [removingTagIds, setRemovingTagIds] = React.useState<Set<string>>(new Set());
   const [internalOpen, setInternalOpen] = React.useState(open);
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const trpc = useTRPC();
 
   // Sync internal open state with prop
   React.useEffect(() => {
     setInternalOpen(open);
   }, [open]);
+
+  // Fetch existing tags when dialog opens
+  const { data: existingTags, isLoading: isLoadingTags } = useQuery({
+    ...trpc.files.getItemTags.queryOptions({
+      itemId,
+      itemType,
+    }),
+    enabled: open,
+  });
+
+  // Set existing tags when they are fetched
+  React.useEffect(() => {
+    if (existingTags && open) {
+      setTags(existingTags.map((tag: { id: string; name: string }) => ({ ...tag })));
+    } else if (!open) {
+      // Clear tags when dialog closes
+      setTags([]);
+    }
+  }, [existingTags, open]);
 
   const {
     register,
@@ -53,37 +85,79 @@ function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTag
 
   const addTagMutation = useMutation(
     trpc.files.addTagToItem.mutationOptions({
-      onSuccess: () => {
-        toast({ title: "Tag added successfully!" });
-        queryClient.invalidateQueries({ queryKey: ["files.getFolderContents"] });
+      onSuccess: (_, variables) => {
+        toast.success("Tag added successfully!");
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getItemTags.queryKey({
+            itemId,
+            itemType,
+          }),
+        });
         reset();
-        handleClose();
       },
       onError: (error) => {
-        toast({ title: "Failed to add tag", description: error.message });
+        toast.error("Failed to add tag", { description: error.message });
       },
-    })
+    }),
+  );
+
+  const removeTagMutation = useMutation(
+    trpc.files.removeTagFromItem.mutationOptions({
+      onSuccess: (data, variables) => {
+        toast.success("Tag removed successfully!");
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getItemTags.queryKey({
+            itemId,
+            itemType,
+          }),
+        });
+        setTags(previous => previous.filter(t => t.id !== variables.tagId));
+        setRemovingTagIds(prev => {
+          const next = new Set(prev);
+          next.delete(variables.tagId);
+          return next;
+        });
+      },
+      onError: (error, variables) => {
+        toast.error("Failed to remove tag", { description: error.message });
+        setRemovingTagIds(prev => {
+          const next = new Set(prev);
+          next.delete(variables.tagId);
+          return next;
+        });
+      },
+    }),
   );
 
   const handleClose = () => {
     setInternalOpen(false);
     onOpenChange?.(false);
     reset();
-    setSelected([]);
+    setTags([]);
+    setRemovingTagIds(new Set());
   };
 
-  const handleUnselect = React.useCallback((tag: Tag) => {
-    setSelected((prev) => prev.filter((s) => s.value !== tag.value));
-  }, []);
+  const handleRemoveTag = React.useCallback((tag: Tag) => {
+    setRemovingTagIds(prev => new Set(prev).add(tag.id));
+    removeTagMutation.mutate({
+      itemId,
+      itemType,
+      tagId: tag.id,
+    });
+  }, [itemId, itemType, removeTagMutation]);
 
   const onSubmit = (data: { tag: string }) => {
     const trimmed = data.tag.trim();
-    if (trimmed && !selected.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())) {
-      const newTag = {
-        value: trimmed.toLowerCase().replace(/\s+/g, "-"),
-        label: trimmed,
-      };
-      setSelected((prev) => [...prev, newTag]);
+    if (
+      trimmed &&
+      !tags.some((tag) => tag.name.toLowerCase() === trimmed.toLowerCase())
+    ) {
       addTagMutation.mutate({
         itemId,
         itemType,
@@ -96,45 +170,82 @@ function FileAddTag({ itemId, itemType, open = false, onOpenChange }: FileAddTag
     <Dialog open={internalOpen} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a Tag</DialogTitle>
+          <DialogTitle>Manage Tags</DialogTitle>
         </DialogHeader>
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="flex flex-col gap-4"
-          autoComplete="off"
-        >
-          <div className="flex flex-wrap gap-1">
-            {selected.map((tag) => (
-              <Badge key={tag.value} variant="secondary" className="select-none">
-                {tag.label}
-                <X
-                  className="size-3 text-muted-foreground hover:text-foreground ml-2 cursor-pointer"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleUnselect(tag)}
-                />
-              </Badge>
-            ))}
-          </div>
-          <Input
-            {...register("tag")}
-            placeholder="Type a tag and press Enter"
-            disabled={isSubmitting}
-            autoFocus
-          />
-          {errors.tag && (
-            <span className="text-red-500 text-xs">{errors.tag.message}</span>
+        <div className="flex flex-col gap-4">
+          {isLoadingTags && (
+            <div className="text-sm text-muted-foreground">Loading tags...</div>
           )}
-          <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
-              Add Tag
-            </Button>
-            <DialogClose asChild>
-              <Button type="button" variant="ghost">
-                Cancel
+          
+          <div className="flex flex-wrap gap-1">
+            {tags.map((tag) => {
+              const isRemoving = removingTagIds.has(tag.id);
+              return (
+                <Badge
+                  key={tag.id}
+                  variant="secondary"
+                  className={`select-none ${isRemoving ? "opacity-50" : ""}`}
+                >
+                  {tag.name}
+                  <button
+                    type="button"
+                    className={`text-muted-foreground hover:text-foreground ml-2 p-0 border-0 bg-transparent cursor-pointer inline-flex items-center justify-center ${
+                      isRemoving ? "cursor-not-allowed opacity-50" : ""
+                    }`}
+                    style={{ width: '12px', height: '12px' }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!isRemoving) {
+                        handleRemoveTag(tag);
+                      }
+                    }}
+                    onTouchStart={(event) => {
+                      // Safari mobile touch support
+                      event.preventDefault();
+                    }}
+                    disabled={isRemoving}
+                    aria-label={`Remove tag ${tag.name}`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              );
+            })}
+          </div>
+
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSubmit(onSubmit)();
+            }}
+            className="flex flex-col gap-2"
+            autoComplete="off"
+          >
+            <Input
+              {...register("tag")}
+              placeholder="Type a tag name and press Enter"
+              disabled={isSubmitting || addTagMutation.isPending}
+              autoFocus
+            />
+            {errors.tag && (
+              <span className="text-xs text-red-500">{errors.tag.message}</span>
+            )}
+            <DialogFooter>
+              <Button 
+                type="submit" 
+                disabled={isSubmitting || addTagMutation.isPending}
+              >
+                Add Tag
               </Button>
-            </DialogClose>
-          </DialogFooter>
-        </form>
+              <DialogClose asChild>
+                <Button type="button" variant="ghost">
+                  Done
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   );
