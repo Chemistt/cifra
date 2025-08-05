@@ -13,6 +13,7 @@ import {
   MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
+  ShareIcon,
   TagIcon,
   Trash2Icon,
   UnlockIcon,
@@ -29,6 +30,10 @@ import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
 import { FilePasswordDialog } from "@/components/file-password-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
+import {
+  FileSharingDialog,
+  type ShareableFile,
+} from "@/components/file-sharing-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
 import { GlobalDropzone } from "@/components/global-dropzone";
 import { LoadingView } from "@/components/loading-view";
@@ -96,7 +101,8 @@ type FileAction =
   | { type: "metadata"; fileId: string }
   | { type: "changePassword"; fileId: string }
   | { type: "removePassword"; fileId: string }
-  | { type: "setPassword"; fileId: string };
+  | { type: "setPassword"; fileId: string }
+  | { type: "share"; fileId: string };
 
 type ViewProps = {
   foldersToRender: FolderContents["folders"] | SearchContents["folders"];
@@ -192,10 +198,16 @@ function FileActionsDropdown({
             Set Password
           </DropdownMenuItem>
         )}
-        {/* <DropdownMenuItem>
-          <ShareIcon className="mr-2 h-4 w-4" />
-          Share
-        </DropdownMenuItem> */}
+        {file.encryptedDeks.length > 0 && (
+          <DropdownMenuItem
+            onClick={() => {
+              onFileAction({ type: "share", fileId: file.id });
+            }}
+          >
+            <ShareIcon className="mr-2 h-4 w-4" />
+            Share
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
           onClick={() => {
             onShowTag(file.id, "file");
@@ -483,6 +495,10 @@ export default function FilesPage() {
     string | undefined
   >();
 
+  const [shareDialogFiles, setShareDialogFiles] = useState<
+    ShareableFile[] | undefined
+  >();
+
   const [showTagDialog, setShowTagDialog] = useState<
     { id: string; type: "file" | "folder" } | undefined
   >();
@@ -569,6 +585,20 @@ export default function FilesPage() {
       }
       case "setPassword": {
         setPasswordDialogFileId(action.fileId);
+        break;
+      }
+      case "share": {
+        // Find the file details from current folder or search results
+        const fileToShare = filesToRender.find((f) => f.id === action.fileId);
+        if (fileToShare) {
+          setShareDialogFiles([
+            {
+              id: fileToShare.id,
+              name: fileToShare.name,
+              mimeType: fileToShare.mimeType,
+            },
+          ]);
+        }
         break;
       }
       default: {
@@ -948,6 +978,14 @@ export default function FilesPage() {
             }}
           />
         )}
+
+        {/* File Sharing Dialog */}
+        <FileSharingDialog
+          files={shareDialogFiles ?? []}
+          onClose={() => {
+            setShareDialogFiles(undefined);
+          }}
+        />
       </div>
     </GlobalDropzone>
   );

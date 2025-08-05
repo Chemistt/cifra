@@ -1,0 +1,370 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import type { inferRouterOutputs } from "@trpc/server";
+import {
+  CalendarIcon,
+  DownloadIcon,
+  EyeIcon,
+  FolderIcon,
+  ShareIcon,
+  UserIcon,
+} from "lucide-react";
+import { useState } from "react";
+
+import { EncryptedFileDownload } from "@/components/encrypted-file-download";
+import { LoadingView } from "@/components/loading-view";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
+import type { AppRouter } from "@/server/api/root";
+import { useTRPC } from "@/trpc/react";
+
+type SharedGroup =
+  inferRouterOutputs<AppRouter>["sharing"]["getSharedWithMe"][number];
+type MyShare = inferRouterOutputs<AppRouter>["sharing"]["getMyShares"][number];
+
+function SharedWithMeView() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const trpc = useTRPC();
+
+  const { data: sharedGroups, isLoading } = useQuery(
+    trpc.sharing.getSharedWithMe.queryOptions(),
+  );
+
+  const filteredGroups = sharedGroups?.filter((group) =>
+    group.sharedFiles.some((sharedFile) =>
+      sharedFile.file.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
+  );
+
+  if (isLoading) {
+    return <LoadingView />;
+  }
+
+  if (!filteredGroups?.length) {
+    return (
+      <div className="py-12 text-center">
+        <ShareIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
+        <h3 className="mb-2 text-lg font-medium">No shared files</h3>
+        <p className="text-muted-foreground">
+          {searchQuery
+            ? "No files match your search"
+            : "No files have been shared with you yet."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Search */}
+      <div className="flex items-center gap-4">
+        <Input
+          placeholder="Search shared files..."
+          value={searchQuery}
+          onChange={(event) => {
+            setSearchQuery(event.target.value);
+          }}
+          className="max-w-md"
+        />
+      </div>
+
+      {/* Shared Groups */}
+      <div className="space-y-4">
+        {filteredGroups.map((group) => (
+          <SharedGroupCard key={group.id} group={group} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SharedGroupCard({ group }: { group: SharedGroup }) {
+  const getPermissionBadge = (level: string) => {
+    const variants = {
+      VIEW: "secondary",
+      DOWNLOAD: "default",
+      EDIT: "destructive",
+    } as const;
+
+    const icons = {
+      VIEW: EyeIcon,
+      DOWNLOAD: DownloadIcon,
+      EDIT: FolderIcon,
+    };
+
+    const Icon = icons[level as keyof typeof icons];
+
+    return (
+      <Badge variant={variants[level as keyof typeof variants]}>
+        <Icon className="mr-1 h-3 w-3" />
+        {level}
+      </Badge>
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserIcon className="h-4 w-4" />
+              Shared by {group.owner.name ?? group.owner.email}
+            </CardTitle>
+            <div className="flex items-center gap-4 text-sm text-gray-500">
+              <span className="flex items-center gap-1">
+                <CalendarIcon className="h-3 w-3" />
+                {formatDate(group.createdAt)}
+              </span>
+              {getPermissionBadge(group.permissionLevel)}
+              {group.expiresAt && (
+                <span className="text-orange-600">
+                  Expires {formatDate(group.expiresAt)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {group.sharedFiles.map((sharedFile) => (
+            <div
+              key={sharedFile.id}
+              className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
+            >
+              <div className="text-xl">
+                {getFileIcon(sharedFile.file.mimeType)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-medium">{sharedFile.file.name}</h4>
+                <p className="text-muted-foreground text-sm">
+                  {formatFileSize(BigInt(sharedFile.file.size))} •{" "}
+                  {formatDate(sharedFile.file.createdAt)}
+                </p>
+              </div>
+              {group.permissionLevel !== "VIEW" && (
+                <EncryptedFileDownload
+                  file={sharedFile.file}
+                  className="cursor-pointer"
+                >
+                  <Button variant="ghost" size="sm">
+                    <DownloadIcon className="mr-2 h-4 w-4" />
+                    Download
+                  </Button>
+                </EncryptedFileDownload>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MySharesView() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const trpc = useTRPC();
+
+  const { data: myShares, isLoading } = useQuery(
+    trpc.sharing.getMyShares.queryOptions(),
+  );
+
+  const filteredShares = myShares?.filter((share) =>
+    share.sharedFiles.some((sharedFile) =>
+      sharedFile.file.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
+  );
+
+  if (isLoading) {
+    return <LoadingView />;
+  }
+
+  if (!filteredShares?.length) {
+    return (
+      <div className="py-12 text-center">
+        <ShareIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
+        <h3 className="mb-2 text-lg font-medium">No shares created</h3>
+        <p className="text-muted-foreground">
+          {searchQuery
+            ? "No shares match your search"
+            : "You haven't shared any files yet."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Search */}
+      <div className="flex items-center gap-4">
+        <Input
+          placeholder="Search my shares..."
+          value={searchQuery}
+          onChange={(event) => {
+            setSearchQuery(event.target.value);
+          }}
+          className="max-w-md"
+        />
+      </div>
+
+      {/* My Shares */}
+      <div className="space-y-4">
+        {filteredShares.map((share) => (
+          <MyShareCard key={share.id} share={share} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MyShareCard({ share }: { share: MyShare }) {
+  const shareUrl = `${globalThis.location.origin}/shared/${share.linkToken}`;
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      // You might want to add a toast notification here
+    } catch (error) {
+      console.error("Failed to copy link:", error);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-base">
+              Share ({share.sharedFiles.length} file
+              {share.sharedFiles.length === 1 ? "" : "s"})
+            </CardTitle>
+            <div className="flex items-center gap-4 text-sm text-gray-500">
+              <span className="flex items-center gap-1">
+                <CalendarIcon className="h-3 w-3" />
+                Created {formatDate(share.createdAt)}
+              </span>
+              <span>
+                {share.sharedUsers.length} recipient
+                {share.sharedUsers.length === 1 ? "" : "s"}
+              </span>
+              {share.downloadCount > 0 && (
+                <span>{share.downloadCount} downloads</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleCopyLink()}
+            >
+              Copy Link
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {/* Files */}
+          <div>
+            <h4 className="mb-2 text-sm font-medium">Files</h4>
+            <div className="space-y-2">
+              {share.sharedFiles.map((sharedFile) => (
+                <div
+                  key={sharedFile.id}
+                  className="flex items-center gap-3 text-sm"
+                >
+                  <span className="text-lg">
+                    {getFileIcon(sharedFile.file.mimeType)}
+                  </span>
+                  <span className="flex-1">{sharedFile.file.name}</span>
+                  <span className="text-muted-foreground">
+                    {formatFileSize(BigInt(sharedFile.file.size))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Recipients */}
+          <div>
+            <h4 className="mb-2 text-sm font-medium">Recipients</h4>
+            <div className="flex flex-wrap gap-2">
+              {share.sharedUsers.map((user) => (
+                <Badge key={user.id} variant="secondary">
+                  {user.name ?? user.email}
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          {/* Share Details */}
+          <div className="bg-muted rounded-md p-3 text-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="font-medium">Permission:</span>{" "}
+                {share.permissionLevel}
+              </div>
+              {share.expiresAt && (
+                <div>
+                  <span className="font-medium">Expires:</span>{" "}
+                  {formatDate(share.expiresAt)}
+                </div>
+              )}
+              {share.maxDownloads && (
+                <div>
+                  <span className="font-medium">Max Downloads:</span>{" "}
+                  {share.maxDownloads}
+                </div>
+              )}
+              <div>
+                <span className="font-medium">Downloads:</span>{" "}
+                {share.downloadCount}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function SharedPage() {
+  return (
+    <div className="flex h-full w-full flex-col space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Shared Files</h1>
+          <p className="text-muted-foreground">
+            Manage files shared with you and files you&apos;ve shared with
+            others.
+          </p>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <Tabs defaultValue="shared-with-me" className="flex-1">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="shared-with-me">Shared with Me</TabsTrigger>
+          <TabsTrigger value="my-shares">My Shares</TabsTrigger>
+        </TabsList>
+        <TabsContent value="shared-with-me" className="mt-6">
+          <SharedWithMeView />
+        </TabsContent>
+        <TabsContent value="my-shares" className="mt-6">
+          <MySharesView />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

@@ -42,7 +42,7 @@ model User {
     ownedTags        UserTags[]   @relation("TagOwner")
     // Share Management
     ownedShares      ShareGroup[] @relation("ShareGroupOwner")
-    ownedSharedFiles SharedFile[] @relation("SharedFileUploader")
+    sharedFiles      SharedFile[] @relation("SharedFileSharer")
     shareGroups      ShareGroup[]
     // Auth
     Session          Session[]
@@ -132,15 +132,16 @@ model EncryptedDEK {
     createdAt     DateTime @default(now())
     // Payload
     dekCiphertext Bytes // The encrypted DEK itself (binary data)
-    iv            String? // Base64 encoded initialization vector (IV) used for file encryption
+    iv            String // Base64 encoded initialization vector (IV) used for file encryption
     // KEK
-    kekIdUsed     String? // ID of the UserKey (KEK) that was used to encrypt this DEK, nullable if the DEK was wrapped by the system
-    kekUsed       UserKey? @relation("KEKWrappedDEKs", fields: [kekIdUsed], references: [id], onUpdate: NoAction, onDelete: Restrict)
+    kekIdUsed     String // ID of the UserKey (KEK) that was used to encrypt this DEK
+    kekUsed       UserKey  @relation("KEKWrappedDEKs", fields: [kekIdUsed], references: [id], onUpdate: NoAction, onDelete: Restrict)
     // onDelete: Restrict -> Prevent deleting a KEK if it's still actively wrapping DEKs.
     // File
-    fileId        String   @unique
+    fileId        String
     file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
+    @@unique([fileId, kekIdUsed]) // Each KEK can have only one encrypted DEK per file
     @@index([kekIdUsed])
 }
 
@@ -201,17 +202,28 @@ model ShareGroup {
     owner           User            @relation("ShareGroupOwner", fields: [ownerId], references: [id])
     // Users
     sharedUsers     User[]
+    // Files in this share group
+    sharedFiles     SharedFile[]
 }
 
 model SharedFile {
-    id           String @id @default(cuid())
-    folderPath   String
-    // Uploaded By
-    uploadedById String
-    uploadedBy   User   @relation("SharedFileUploader", fields: [uploadedById], references: [id])
+    id           String     @id @default(cuid())
+    createdAt    DateTime   @default(now())
+    // Share Group
+    shareGroupId String
+    shareGroup   ShareGroup @relation(fields: [shareGroupId], references: [id], onDelete: Cascade)
     // File
     fileId       String
-    file         File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+    file         File       @relation(fields: [fileId], references: [id], onDelete: Cascade)
+    // Metadata
+    sharedAt     DateTime   @default(now())
+    sharedById   String // User who added this file to the share
+    sharedBy     User       @relation("SharedFileSharer", fields: [sharedById], references: [id])
+
+    @@unique([shareGroupId, fileId]) // Each file can only be in a share group once
+    @@index([shareGroupId])
+    @@index([fileId])
+    @@index([sharedById])
 }
 
 enum AuditAction {

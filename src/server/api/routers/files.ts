@@ -724,48 +724,64 @@ export const filesRouter = createTRPCRouter({
       const { user } = ctx.session;
       const { fileId } = input;
 
-      // Get file and verify ownership
+      // Get file and verify user has access (either owner or shared with them)
       const file = await ctx.db.file.findFirst({
         where: {
           id: fileId,
-          ownerId: user.id,
           deletedAt: null,
+          OR: [
+            { ownerId: user.id }, // User owns the file
+            {
+              // File is shared with the user (through their KEK)
+              encryptedDeks: {
+                some: {
+                  kekUsed: {
+                    userId: user.id,
+                  },
+                },
+              },
+            },
+          ],
         },
         include: {
-          encryptedDeks: true,
+          encryptedDeks: {
+            where: {
+              kekUsed: {
+                userId: user.id, // Only get DEKs encrypted with current user's KEKs
+              },
+            },
+          },
         },
       });
 
       if (!file) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "File not found",
+          message: "File not found or you don't have access",
         });
       }
 
-      // Check if file is encrypted (has encrypted DEKs)
+      // Check if user has an encrypted DEK for this file
       if (file.encryptedDeks.length === 0) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "File is not encrypted",
+          code: "FORBIDDEN",
+          message: "You don't have access to decrypt this file",
         });
       }
 
-      // Get the most recent encrypted DEK (in case of key rotation)
-      const latestEncryptedDEK = file.encryptedDeks.sort(
-        (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-      )[0];
+      // Get the user's encrypted DEK (should be only one)
+      const userEncryptedDEK = file.encryptedDeks[0];
 
-      if (!latestEncryptedDEK) {
+      if (!userEncryptedDEK) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "No encrypted DEK found for file",
+          message: "No encrypted DEK found for user",
         });
       }
 
       // Convert encrypted DEK to base64 for transport
       const encryptedDEKBase64 = Buffer.from(
-        latestEncryptedDEK.dekCiphertext,
+        userEncryptedDEK.dekCiphertext,
       ).toString("base64");
 
       return {
@@ -775,8 +791,8 @@ export const filesRouter = createTRPCRouter({
         originalSize: file.size.toString(),
         storagePath: file.storagePath,
         encryptedDEKBase64,
-        keyId: latestEncryptedDEK.kekIdUsed ?? "",
-        iv: latestEncryptedDEK.iv ?? "",
+        keyId: userEncryptedDEK.kekIdUsed,
+        iv: userEncryptedDEK.iv,
       };
     }),
   deleteFile: protectedProcedure
@@ -849,6 +865,13 @@ export const filesRouter = createTRPCRouter({
           id: fileId,
           ownerId: userId,
           deletedAt: null,
+          encryptedDeks: {
+            some: {
+              kekUsed: {
+                userId: userId,
+              },
+            },
+          },
         },
         include: {
           owner: {
@@ -885,8 +908,13 @@ export const filesRouter = createTRPCRouter({
           sharedFiles: {
             select: {
               id: true,
-              folderPath: true,
-              uploadedById: true,
+              sharedAt: true,
+              sharedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
             },
           },
         },
