@@ -161,8 +161,6 @@ function FileActionsDropdown({
             if (file.passwordHash) {
               onDownload(file);
             } else if (file.encryptedDeks.length > 0) {
-              // Optionally, trigger EncryptedFileDownload logic here
-              // Or keep as is if handled elsewhere
             } else {
               handleUnencryptedDownload(file.storagePath);
             }
