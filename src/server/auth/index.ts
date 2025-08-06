@@ -15,6 +15,10 @@ export const auth = betterAuth({
     provider: "postgresql",
   }),
   plugins: [twoFactor(), passkey()],
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: false, 
+  },
   socialProviders: {
     google: {
       clientId: env.GOOGLE_CLIENT_ID,
