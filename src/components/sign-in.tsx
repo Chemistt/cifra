@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyIcon } from "lucide-react";
+import { KeyIcon, LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
+import { PasswordSignInDialog } from "./password-sign-in-dialog";
+
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const router = useRouter();
 
   return (
@@ -116,6 +119,22 @@ export default function SignIn() {
         <KeyIcon className="h-4 w-4" />
         Sign in with Passkey
       </Button>
+      <Button
+        variant="outline"
+        className={cn("w-full gap-2")}
+        disabled={loading}
+        onClick={() => {
+          setPasswordDialogOpen(true);
+        }}
+      >
+        <LockIcon className="h-4 w-4" />
+        Sign in with Password
+      </Button>
+      
+      <PasswordSignInDialog
+        open={passwordDialogOpen}
+        onOpenChange={setPasswordDialogOpen}
+      />
     </div>
   );
 }
