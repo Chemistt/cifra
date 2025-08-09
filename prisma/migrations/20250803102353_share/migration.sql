@@ -20,9 +20,6 @@ DROP INDEX "EncryptedDEK_fileId_key";
 ALTER TABLE "EncryptedDEK" ALTER COLUMN "kekIdUsed" SET NOT NULL;
 
 -- AlterTable
-ALTER TABLE "EncryptedDEK" ALTER COLUMN "iv" SET NOT NULL;
-
--- AlterTable
 ALTER TABLE "SharedFile" DROP COLUMN "folderPath",
 DROP COLUMN "uploadedById",
 ADD COLUMN     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -16,12 +16,6 @@ enum Role {
     SYSMAINTAINER
 }
 
-enum PermissionLevel {
-    VIEW
-    DOWNLOAD
-    EDIT
-}
-
 model User {
     id               String       @id @default(cuid())
     name             String?
@@ -189,21 +183,20 @@ model FolderTag {
 }
 
 model ShareGroup {
-    id              String          @id @default(cuid())
-    permissionLevel PermissionLevel
-    linkToken       String          @unique // The public part of the link
-    passwordHash    String? // Optional password for the link
-    maxDownloads    Int?
-    downloadCount   Int             @default(0)
-    createdAt       DateTime        @default(now())
-    expiresAt       DateTime?
+    id            String       @id @default(cuid())
+    linkToken     String       @unique // The public part of the link
+    passwordHash  String? // Optional password for the link
+    maxDownloads  Int?
+    downloadCount Int          @default(0)
+    createdAt     DateTime     @default(now())
+    expiresAt     DateTime?
     // Owner
-    ownerId         String
-    owner           User            @relation("ShareGroupOwner", fields: [ownerId], references: [id])
+    ownerId       String
+    owner         User         @relation("ShareGroupOwner", fields: [ownerId], references: [id])
     // Users
-    sharedUsers     User[]
+    sharedUsers   User[]
     // Files in this share group
-    sharedFiles     SharedFile[]
+    sharedFiles   SharedFile[]
 }
 
 model SharedFile {

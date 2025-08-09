@@ -4,9 +4,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarIcon,
   CopyIcon,
-  DownloadIcon,
-  EditIcon,
-  EyeIcon,
   LockIcon,
   ShareIcon,
   UserPlusIcon,
@@ -28,13 +25,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { formatDate } from "@/lib/utils";
 import { useTRPC } from "@/trpc/react";
@@ -48,21 +38,17 @@ export type ShareableFile = {
 type FileSharingDialogProps = {
   files: ShareableFile[];
   children?: React.ReactNode;
-  onClose?: () => void;
+  onCloseAction?: () => void;
 };
-
-type PermissionLevel = "VIEW" | "DOWNLOAD" | "EDIT";
 
 export function FileSharingDialog({
   files,
   children,
-  onClose,
+  onCloseAction,
 }: FileSharingDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [recipientEmails, setRecipientEmails] = useState<string[]>([]);
   const [currentEmail, setCurrentEmail] = useState("");
-  const [permissionLevel, setPermissionLevel] =
-    useState<PermissionLevel>("DOWNLOAD");
   const [password, setPassword] = useState("");
   const [usePassword, setUsePassword] = useState(false);
   const [expiresAt, setExpiresAt] = useState("");
@@ -145,7 +131,6 @@ export function FileSharingDialog({
     const shareData = {
       fileIds: files.map((f) => f.id),
       recipientEmails,
-      permissionLevel,
       ...(usePassword && password && { password }),
       ...(expiresAt && { expiresAt: new Date(expiresAt) }),
       ...(maxDownloads && { maxDownloads: Number.parseInt(maxDownloads) }),
@@ -165,44 +150,10 @@ export function FileSharingDialog({
     }
   };
 
-  const getPermissionIcon = (level: PermissionLevel) => {
-    switch (level) {
-      case "VIEW": {
-        return <EyeIcon className="h-4 w-4" />;
-      }
-      case "DOWNLOAD": {
-        return <DownloadIcon className="h-4 w-4" />;
-      }
-      case "EDIT": {
-        return <EditIcon className="h-4 w-4" />;
-      }
-      default: {
-        return <EyeIcon className="h-4 w-4" />;
-      }
-    }
-  };
-
-  const getPermissionDescription = (level: PermissionLevel) => {
-    switch (level) {
-      case "VIEW": {
-        return "Recipients can view file details but cannot download";
-      }
-      case "DOWNLOAD": {
-        return "Recipients can view and download files";
-      }
-      case "EDIT": {
-        return "Recipients can view, download, and modify files";
-      }
-      default: {
-        return "";
-      }
-    }
-  };
-
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (!open) {
-      onClose?.();
+      onCloseAction?.();
     }
   };
 
@@ -263,12 +214,6 @@ export function FileSharingDialog({
                 <div className="flex justify-between">
                   <span>Recipients:</span>
                   <span>{recipientEmails.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Permission:</span>
-                  <span className="capitalize">
-                    {permissionLevel.toLowerCase()}
-                  </span>
                 </div>
                 {usePassword && (
                   <div className="flex justify-between">
@@ -346,51 +291,6 @@ export function FileSharingDialog({
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* Permissions */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Permission Level</Label>
-              <Select
-                value={permissionLevel}
-                onValueChange={(value: PermissionLevel) => {
-                  setPermissionLevel(value);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue>
-                    <div className="flex items-center gap-2">
-                      {getPermissionIcon(permissionLevel)}
-                      <span className="capitalize">
-                        {permissionLevel.toLowerCase()}
-                      </span>
-                    </div>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VIEW">
-                    <div className="flex items-center gap-2">
-                      <EyeIcon className="h-4 w-4" />
-                      View Only
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="DOWNLOAD">
-                    <div className="flex items-center gap-2">
-                      <DownloadIcon className="h-4 w-4" />
-                      Download
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="EDIT">
-                    <div className="flex items-center gap-2">
-                      <EditIcon className="h-4 w-4" />
-                      Edit
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">
-                {getPermissionDescription(permissionLevel)}
-              </p>
             </div>
 
             <Separator />

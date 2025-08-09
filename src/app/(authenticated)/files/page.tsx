@@ -982,7 +982,7 @@ export default function FilesPage() {
         {/* File Sharing Dialog */}
         <FileSharingDialog
           files={shareDialogFiles ?? []}
-          onClose={() => {
+          onCloseAction={() => {
             setShareDialogFiles(undefined);
           }}
         />

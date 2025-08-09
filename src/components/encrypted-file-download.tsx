@@ -17,8 +17,14 @@ type FileItem =
   | inferRouterOutputs<AppRouter>["files"]["getFolderContents"]["files"][number]
   | inferRouterOutputs<AppRouter>["files"]["searchFiles"]["files"][number];
 
+type MinimalFile = {
+  id: string;
+  name: string;
+  storagePath: string;
+};
+
 type EncryptedFileDownloadProps = {
-  file: FileItem;
+  file: FileItem | MinimalFile;
   children?: React.ReactNode;
   className?: string;
 };

@@ -11,7 +11,6 @@ export const sharingRouter = createTRPCRouter({
       z.object({
         fileIds: z.array(z.string()),
         recipientEmails: z.array(z.email()),
-        permissionLevel: z.enum(["VIEW", "DOWNLOAD", "EDIT"]),
         expiresAt: z.date().optional(),
         password: z.string().optional(),
         maxDownloads: z.number().optional(),
@@ -19,14 +18,8 @@ export const sharingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { user } = ctx.session;
-      const {
-        fileIds,
-        recipientEmails,
-        permissionLevel,
-        expiresAt,
-        password,
-        maxDownloads,
-      } = input;
+      const { fileIds, recipientEmails, expiresAt, password, maxDownloads } =
+        input;
 
       try {
         // Verify all files belong to the user
@@ -123,7 +116,6 @@ export const sharingRouter = createTRPCRouter({
           // Create the share group
           const shareGroup = await tx.shareGroup.create({
             data: {
-              permissionLevel,
               linkToken,
               passwordHash,
               maxDownloads,
@@ -271,7 +263,6 @@ export const sharingRouter = createTRPCRouter({
             details: {
               fileCount: fileIds.length,
               recipientCount: recipients.length,
-              permissionLevel,
               hasPassword: !!password,
               expiresAt,
             },
