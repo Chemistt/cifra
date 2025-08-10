@@ -2,14 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
-import { CalendarIcon, DownloadIcon, ShareIcon, UserIcon } from "lucide-react";
+import {
+  CalendarIcon,
+  DownloadIcon,
+  InfoIcon,
+  ShareIcon,
+  UserIcon,
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { LoadingView } from "@/components/loading-view";
-import { Badge } from "@/components/ui/badge";
+import { ShareMetadataDrawer } from "@/components/share-metadata-drawer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
@@ -114,6 +121,7 @@ function SharedGroupCard({ group }: { group: SharedGroup }) {
 
 function MySharesView() {
   const trpc = useTRPC();
+  const [selectedShare, setSelectedShare] = useState<MyShare | undefined>();
 
   const { data: myShares, isLoading } = useQuery(
     trpc.sharing.getMyShares.queryOptions(),
@@ -136,23 +144,45 @@ function MySharesView() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
-        {myShares.map((share) => (
-          <MyShareCard key={share.id} share={share} />
-        ))}
+    <>
+      <div className="space-y-6">
+        <div className="space-y-4">
+          {myShares.map((share) => (
+            <MyShareCard
+              key={share.id}
+              share={share}
+              onViewDetails={() => {
+                setSelectedShare(share);
+              }}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+
+      <ShareMetadataDrawer
+        share={selectedShare}
+        open={!!selectedShare}
+        onOpenChange={(open) => {
+          if (!open) setSelectedShare(undefined);
+        }}
+      />
+    </>
   );
 }
 
-function MyShareCard({ share }: { share: MyShare }) {
+function MyShareCard({
+  share,
+  onViewDetails,
+}: {
+  share: MyShare;
+  onViewDetails: () => void;
+}) {
   const shareUrl = `${globalThis.location.origin}/sharing/${share.linkToken}`;
 
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
-      // You might want to add a toast notification here
+      toast.success("Link copied to clipboard");
     } catch (error) {
       console.error("Failed to copy link:", error);
     }
@@ -163,7 +193,8 @@ function MyShareCard({ share }: { share: MyShare }) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-base">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShareIcon className="h-4 w-4" />
               Share ({share.sharedFiles.length} file
               {share.sharedFiles.length === 1 ? "" : "s"})
             </CardTitle>
@@ -179,9 +210,18 @@ function MyShareCard({ share }: { share: MyShare }) {
               {share.downloadCount > 0 && (
                 <span>{share.downloadCount} downloads</span>
               )}
+              {share.expiresAt && (
+                <span className="text-orange-600">
+                  Expires {formatDate(share.expiresAt)}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={onViewDetails}>
+              <InfoIcon className="mr-2 h-4 w-4" />
+              Details
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -193,63 +233,24 @@ function MyShareCard({ share }: { share: MyShare }) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {/* Files */}
-          <div>
-            <h4 className="mb-2 text-sm font-medium">Files</h4>
-            <div className="space-y-2">
-              {share.sharedFiles.map((sharedFile) => (
-                <div
-                  key={sharedFile.id}
-                  className="flex items-center gap-3 text-sm"
-                >
-                  <span className="text-lg">
-                    {getFileIcon(sharedFile.file.mimeType)}
-                  </span>
-                  <span className="flex-1">{sharedFile.file.name}</span>
-                  <span className="text-muted-foreground">
-                    {formatFileSize(BigInt(sharedFile.file.size))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Recipients */}
-          <div>
-            <h4 className="mb-2 text-sm font-medium">Recipients</h4>
-            <div className="flex flex-wrap gap-2">
-              {share.sharedUsers.map((user) => (
-                <Badge key={user.id} variant="secondary">
-                  {user.name ?? user.email}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          {/* Share Details */}
-          <div className="bg-muted rounded-md p-3 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              {share.expiresAt && (
-                <div>
-                  <span className="font-medium">Expires:</span>{" "}
-                  {formatDate(share.expiresAt)}
-                </div>
-              )}
-              {share.maxDownloads && (
-                <div>
-                  <span className="font-medium">Max Downloads:</span>{" "}
-                  {share.maxDownloads}
-                </div>
-              )}
-              <div>
-                <span className="font-medium">Downloads:</span>{" "}
-                {share.downloadCount}
+        <div className="space-y-3">
+          {share.sharedFiles.map((sharedFile) => (
+            <div
+              key={sharedFile.id}
+              className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
+            >
+              <div className="text-xl">
+                {getFileIcon(sharedFile.file.mimeType)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-medium">{sharedFile.file.name}</h4>
+                <p className="text-muted-foreground text-sm">
+                  {formatFileSize(BigInt(sharedFile.file.size))} •{" "}
+                  {formatDate(sharedFile.file.createdAt)}
+                </p>
               </div>
             </div>
-          </div>
+          ))}
         </div>
       </CardContent>
     </Card>
