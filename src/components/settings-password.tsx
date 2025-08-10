@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient,useSuspenseQuery } from "@tanstack/react-query";
 import {
   EditIcon,
   Eye,
@@ -134,6 +134,7 @@ function PasswordField({
 
 export function SettingsPassword() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [isSetDialogOpen, setIsSetDialogOpen] = useState(false);
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
   
@@ -200,6 +201,13 @@ export function SettingsPassword() {
       onSuccess: () => {
         toast.success("Password deleted successfully");
         void passwordStatusQuery.refetch();
+        // Invalidate all TOTP queries since password is required for TOTP
+        void queryClient.invalidateQueries({
+          queryKey: trpc.totp.hasTotpEnabled.pathKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.totp.getBackupCodesStatus.pathKey(),
+        });
       },
       onError: (error) => {
         toast.error(error.message);
@@ -258,7 +266,7 @@ export function SettingsPassword() {
                 <AlertDialogTitle>Delete Password</AlertDialogTitle>
                 <AlertDialogDescription>
                   Are you sure you want to delete your password? <br/>
-                  This will remove password-based login from your account. <br/>
+                  This will remove password-based login and disable TOTP for your account. <br/>
                   Make sure you have other authentication methods set up before proceeding.
                 </AlertDialogDescription>
               </AlertDialogHeader>

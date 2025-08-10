@@ -5,7 +5,7 @@ import { AccountForm } from "@/components/settings-acount-form";
 import { SettingsKeyManagement } from "@/components/settings-key-management";
 import { SettingsPasskey } from "@/components/settings-passkey";
 import { SettingsPassword } from "@/components/settings-password";
-// import { SettingsTOTP } from "@/components/settings-totp";
+import { SettingsTotp } from "@/components/settings-totp";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, HydrateClient, prefetch } from "@/trpc/server";
 
@@ -15,6 +15,8 @@ export default function SettingsPage() {
   prefetch(api.passkey.getPasskeys.queryOptions());
   prefetch(api.profile.getProfile.queryOptions());
   prefetch(api.totp.hasPassword.queryOptions());
+  prefetch(api.totp.hasTotpEnabled.queryOptions());
+  prefetch(api.totp.getBackupCodesStatus.queryOptions());
   prefetch(api.kms.getKeys.queryOptions());
 
   return (
@@ -78,7 +80,10 @@ export default function SettingsPage() {
             <SettingsPasskey />
           </TabsContent>
           <TabsContent value="tab-3">
-            <SettingsPassword />
+            <div className="space-y-6">
+              <SettingsPassword />
+              <SettingsTotp />
+            </div>
           </TabsContent>
           <TabsContent value="tab-4">
             <SettingsKeyManagement />
