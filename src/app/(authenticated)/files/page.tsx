@@ -72,7 +72,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { env } from "@/env";
 import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
@@ -87,15 +86,6 @@ const formatPathDisplay = (path: string[]) => {
   return path.join(" / ");
 };
 
-// TODO: Populate it trpc instead?
-const handleUnencryptedDownload = (path: string) => {
-  if (!path) return;
-  globalThis.open(
-    `https://${env.NEXT_PUBLIC_UPLOADTHING_APPID}.ufs.sh/f/${path}`,
-    "_blank",
-  );
-};
-
 type FileAction =
   | { type: "rename"; file: { id: string; name: string } }
   | { type: "delete"; fileId: string }
@@ -103,7 +93,8 @@ type FileAction =
   | { type: "changePassword"; fileId: string }
   | { type: "removePassword"; fileId: string }
   | { type: "setPassword"; fileId: string }
-  | { type: "share"; fileId: string };
+  | { type: "share"; fileId: string }
+  | { type: "download"; fileId: string };
 
 type ViewProps = {
   foldersToRender: FolderContents["folders"] | SearchContents["folders"];
@@ -151,24 +142,14 @@ function FileActionsDropdown({
           <EditIcon className="mr-2 h-4 w-4" />
           Rename
         </DropdownMenuItem>
-        {file.encryptedDeks.length > 0 ? (
-          <EncryptedFileDownload file={file}>
-            <DropdownMenuItem>
-              <DownloadIcon className="mr-2 h-4 w-4" />
-              Download (Encrypted)
-            </DropdownMenuItem>
-          </EncryptedFileDownload>
-        ) : (
-          <DropdownMenuItem
-            onClick={() => {
-              handleUnencryptedDownload(file.storagePath);
-            }}
-          >
-            <DownloadIcon className="mr-2 h-4 w-4" />
-            Download
-          </DropdownMenuItem>
-        )}
-
+        <DropdownMenuItem
+          onClick={() => {
+            onFileAction({ type: "download", fileId: file.id });
+          }}
+        >
+          <DownloadIcon className="mr-2 h-4 w-4" />
+          Download
+        </DropdownMenuItem>
         {file.passwordHash ? (
           <>
             <DropdownMenuItem
@@ -504,6 +485,7 @@ export default function FilesPage() {
   const [showTagDialog, setShowTagDialog] = useState<
     { id: string; type: "file" | "folder" } | undefined
   >();
+  const [downloadFileId, setDownloadFileId] = useState<string | undefined>();
 
   // Debounce search query
   useEffect(() => {
@@ -601,6 +583,10 @@ export default function FilesPage() {
             },
           ]);
         }
+        break;
+      }
+      case "download": {
+        setDownloadFileId(action.fileId);
         break;
       }
       default: {
@@ -988,6 +974,24 @@ export default function FilesPage() {
             setShareDialogFiles(undefined);
           }}
         />
+
+        {/* File Download Component */}
+        {downloadFileId &&
+          (() => {
+            const fileToDownload = filesToRender.find(
+              (f) => f.id === downloadFileId,
+            );
+            return fileToDownload ? (
+              <EncryptedFileDownload
+                file={fileToDownload}
+                autoTrigger
+                onDownloadStartAction={() => {
+                  setDownloadFileId(undefined);
+                }}
+                key={downloadFileId} // Force re-mount on file change
+              />
+            ) : undefined;
+          })()}
       </div>
     </GlobalDropzone>
   );

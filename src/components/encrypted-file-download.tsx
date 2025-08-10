@@ -1,17 +1,19 @@
 "use client";
 
+// TODO: This component is not working as expected.
+// It is not unmounting properly when the file is not password protected.
+// It is downloading the file twice.
+
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
-import { DownloadIcon, LoaderIcon } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { FileDownloadPasswordDialog } from "@/components/file-download-password-dialog";
 import { env } from "@/env";
 import { decryptFileComplete, downloadFile } from "@/lib/crypto";
 import type { AppRouter } from "@/server/api/root";
 import { useTRPC } from "@/trpc/react";
-
-import { Button } from "./ui/button";
 
 type FileItem =
   | inferRouterOutputs<AppRouter>["files"]["getFolderContents"]["files"][number]
@@ -21,6 +23,7 @@ type MinimalFile = {
   id: string;
   name: string;
   storagePath: string;
+  passwordHash?: string | null;
 };
 
 type EncryptedFileDownloadProps = {
@@ -28,15 +31,22 @@ type EncryptedFileDownloadProps = {
   children?: React.ReactNode;
   className?: string;
   linkToken?: string;
+  autoTrigger?: boolean;
+  onDownloadStartAction?: () => void;
 };
+
+type DownloadState = "idle" | "waiting-for-password" | "downloading";
 
 export function EncryptedFileDownload({
   file,
   children,
   className,
   linkToken,
+  autoTrigger = false,
+  onDownloadStartAction,
 }: EncryptedFileDownloadProps) {
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadState, setDownloadState] = useState<DownloadState>("idle");
+  const [hasAutoTriggered, setHasAutoTriggered] = useState(false);
   const trpc = useTRPC();
 
   const { data: encryptionDetails } = useQuery(
@@ -45,13 +55,13 @@ export function EncryptedFileDownload({
     }),
   );
 
-  // Decrypt DEK
+  // Decrypt DEK mutation
   const decryptDEKMutation = useMutation(
     trpc.kms.decryptDEK.mutationOptions({
       onError: (error) => {
         console.error("Error decrypting DEK:", error);
         toast.error("Failed to decrypt file key");
-        setIsDownloading(false);
+        setDownloadState("idle");
       },
     }),
   );
@@ -65,22 +75,29 @@ export function EncryptedFileDownload({
     }),
   );
 
-  const handleEncryptedDownload = async () => {
+  const performEncryptedDownload = useCallback(async () => {
     if (!file.storagePath || !encryptionDetails) {
       toast.error("File path or encryption details not available");
+      setDownloadState("idle");
       return;
     }
 
-    setIsDownloading(true);
-
     try {
-      // Step 2: Decrypt the DEK using user's KEK
+      toast.loading("Processing file...", {
+        id: "processing-file",
+      });
+      setDownloadState("downloading");
+
+      // Signal that download is starting
+      onDownloadStartAction?.();
+
+      // Decrypt the DEK using user's KEK
       const decryptedDEKResult = await decryptDEKMutation.mutateAsync({
         encryptedDEKBase64: encryptionDetails.encryptedDEKBase64,
         keyId: encryptionDetails.keyId,
       });
 
-      // Step 3: Fetch the encrypted file from UploadThing
+      // Fetch the encrypted file from UploadThing
       const fileUrl = `https://${env.NEXT_PUBLIC_UPLOADTHING_APPID}.ufs.sh/f/${file.storagePath}`;
       const response = await fetch(fileUrl);
 
@@ -90,7 +107,7 @@ export function EncryptedFileDownload({
 
       const encryptedData = await response.arrayBuffer();
 
-      // Step 4: Decrypt the file client-side
+      // Decrypt the file client-side
       const decryptedFile = await decryptFileComplete(
         encryptedData,
         decryptedDEKResult.dekBase64,
@@ -99,10 +116,10 @@ export function EncryptedFileDownload({
         encryptionDetails.originalMimeType,
       );
 
-      // Step 5: Download the decrypted file
+      // Download the decrypted file
       downloadFile(decryptedFile);
 
-      // Step 6: Track download if this is a shared file
+      // Track download if this is a shared file
       if (linkToken) {
         try {
           await trackDownloadMutation.mutateAsync({
@@ -110,14 +127,14 @@ export function EncryptedFileDownload({
             fileId: file.id,
           });
         } catch (error) {
-          // Log but don't interrupt user flow
           console.error("Failed to track download:", error);
         }
       }
-
+      toast.dismiss("processing-file");
       toast.success(
         `File "${file.name}" decrypted and downloaded successfully`,
       );
+      setDownloadState("idle");
     } catch (error) {
       console.error("Download error:", error);
       toast.error(
@@ -125,40 +142,86 @@ export function EncryptedFileDownload({
           ? `Failed to download: ${error.message}`
           : "Failed to download file",
       );
-    } finally {
-      setIsDownloading(false);
+      setDownloadState("idle");
     }
-  };
+  }, [
+    file.storagePath,
+    file.id,
+    file.name,
+    encryptionDetails,
+    decryptDEKMutation,
+    trackDownloadMutation,
+    linkToken,
+    onDownloadStartAction,
+  ]);
+
+  const initiateDownload = useCallback(() => {
+    const hasPassword = Boolean(file.passwordHash);
+
+    if (hasPassword) {
+      setDownloadState("waiting-for-password");
+    } else {
+      void performEncryptedDownload();
+    }
+  }, [file.passwordHash, performEncryptedDownload]);
+
+  const handleManualDownload = useCallback(() => {
+    if (downloadState !== "idle") return;
+    initiateDownload();
+  }, [downloadState, initiateDownload]);
+
+  const handlePasswordVerified = useCallback(() => {
+    setDownloadState("idle");
+    void performEncryptedDownload();
+  }, [performEncryptedDownload]);
+
+  const handlePasswordDialogClose = useCallback(() => {
+    setDownloadState("idle");
+    // For auto-trigger components, we should call onDownloadStartAction when cancelled
+    // This will unmount the component so user can try again
+    if (autoTrigger) {
+      onDownloadStartAction?.();
+    }
+  }, [autoTrigger, onDownloadStartAction]);
+
+  // Auto-trigger effect - runs once when conditions are met
+  useEffect(() => {
+    if (
+      autoTrigger &&
+      encryptionDetails &&
+      downloadState === "idle" &&
+      !hasAutoTriggered
+    ) {
+      setHasAutoTriggered(true);
+      initiateDownload();
+    }
+  }, [
+    autoTrigger,
+    encryptionDetails,
+    downloadState,
+    hasAutoTriggered,
+    initiateDownload,
+  ]);
 
   return (
     <>
-      {children ? (
-        <div
-          onClick={() => {
-            void handleEncryptedDownload();
-          }}
-          className={className}
-        >
+      {!autoTrigger && Boolean(children) && (
+        <div onClick={handleManualDownload} className={className}>
           {children}
         </div>
-      ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            void handleEncryptedDownload();
-          }}
-          disabled={isDownloading}
-          className={className}
-        >
-          {isDownloading ? (
-            <LoaderIcon className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <DownloadIcon className="mr-2 h-4 w-4" />
-          )}
-          {isDownloading ? "Decrypting..." : "Download"}
-        </Button>
       )}
+
+      <FileDownloadPasswordDialog
+        fileId={file.id}
+        fileName={file.name}
+        open={downloadState === "waiting-for-password"}
+        onOpenChange={(open) => {
+          if (!open) {
+            handlePasswordDialogClose();
+          }
+        }}
+        onPasswordVerified={handlePasswordVerified}
+      />
     </>
   );
 }
