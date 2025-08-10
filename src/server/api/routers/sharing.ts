@@ -593,8 +593,520 @@ export const sharingRouter = createTRPCRouter({
 
       return { success: true };
     }),
+  addFilesToShare: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        fileIds: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, fileIds } = input;
 
-  // Track download for analytics/limits
+      try {
+        // Verify ownership of the share group
+        const shareGroup = await ctx.db.shareGroup.findFirst({
+          where: {
+            id: shareGroupId,
+            ownerId: user.id,
+          },
+          include: {
+            sharedUsers: {
+              include: {
+                userKeys: {
+                  where: {
+                    isPrimary: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!shareGroup) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Share not found or you don't have permission",
+          });
+        }
+
+        // Verify all files belong to the user and are encrypted
+        const files = await ctx.db.file.findMany({
+          where: {
+            id: { in: fileIds },
+            ownerId: user.id,
+            deletedAt: null,
+          },
+          include: {
+            encryptedDeks: {
+              where: {
+                kekUsed: {
+                  userId: user.id,
+                },
+              },
+            },
+          },
+        });
+
+        if (files.length !== fileIds.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "One or more files not found or you don't have permission",
+          });
+        }
+
+        // Check if all files are encrypted
+        const unencryptedFiles = files.filter(
+          (file) => file.encryptedDeks.length === 0,
+        );
+        if (unencryptedFiles.length > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Files must be encrypted to share: ${unencryptedFiles
+              .map((f) => f.name)
+              .join(", ")}`,
+          });
+        }
+
+        // Check if any files are already shared in this group
+        const existingSharedFiles = await ctx.db.sharedFile.findMany({
+          where: {
+            shareGroupId,
+            fileId: { in: fileIds },
+          },
+        });
+
+        const alreadySharedFileIds = new Set(
+          existingSharedFiles.map((sf) => sf.fileId),
+        );
+        const newFileIds = fileIds.filter(
+          (fileId) => !alreadySharedFileIds.has(fileId),
+        );
+
+        if (newFileIds.length === 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "All files are already shared in this group",
+          });
+        }
+
+        // Create shared file records for new files
+        await Promise.all(
+          newFileIds.map((fileId) =>
+            ctx.db.sharedFile.create({
+              data: {
+                shareGroupId,
+                fileId,
+                sharedById: user.id,
+              },
+            }),
+          ),
+        );
+
+        // Rewrap DEKs for all recipients for the new files
+        const newFiles = files.filter((file) => newFileIds.includes(file.id));
+        const rewrapResults: {
+          fileId: string;
+          recipientUserId: string;
+          success: boolean;
+          error?: string;
+        }[] = [];
+
+        for (const file of newFiles) {
+          for (const recipient of shareGroup.sharedUsers) {
+            try {
+              // Check if recipient already has access
+              const existingRecipientDEK = await ctx.db.encryptedDEK.findFirst({
+                where: {
+                  fileId: file.id,
+                  kekUsed: {
+                    userId: recipient.id,
+                  },
+                },
+              });
+
+              if (existingRecipientDEK) {
+                continue; // Skip if already has access
+              }
+
+              // Get the file owner's encrypted DEK
+              const ownerEncryptedDEK = file.encryptedDeks[0];
+              if (!ownerEncryptedDEK?.kekIdUsed) {
+                throw new Error("No encrypted DEK found for file");
+              }
+
+              // Get recipient's primary key
+              const recipientKey = recipient.userKeys[0];
+              if (!recipientKey) {
+                throw new Error("Recipient has no primary key");
+              }
+
+              // Get owner's key for decryption
+              const ownerKey = await ctx.db.userKey.findFirst({
+                where: {
+                  id: ownerEncryptedDEK.kekIdUsed,
+                  userId: user.id,
+                },
+              });
+
+              if (!ownerKey) {
+                throw new Error("Owner's encryption key not found");
+              }
+
+              // Decrypt and re-encrypt DEK using AWS KMS
+              const { DecryptCommand, EncryptCommand, KMSClient } =
+                await import("@aws-sdk/client-kms");
+              const client = new KMSClient({ region: "ap-southeast-1" });
+
+              // Step 1: Decrypt DEK with owner's KEK
+              const encryptedDEKBuffer = Buffer.from(
+                ownerEncryptedDEK.dekCiphertext,
+              );
+              const decryptCommand = new DecryptCommand({
+                CiphertextBlob: encryptedDEKBuffer,
+                KeyId: ownerKey.keyIdentifierInKMS,
+              });
+
+              const decryptResponse = await client.send(decryptCommand);
+              if (!decryptResponse.Plaintext) {
+                throw new Error("Failed to decrypt DEK");
+              }
+
+              // Step 2: Re-encrypt with recipient's KEK
+              const dekBuffer = Buffer.from(decryptResponse.Plaintext);
+              const encryptCommand = new EncryptCommand({
+                KeyId: recipientKey.keyIdentifierInKMS,
+                Plaintext: dekBuffer,
+              });
+
+              const encryptResponse = await client.send(encryptCommand);
+              if (!encryptResponse.CiphertextBlob) {
+                throw new Error("Failed to re-encrypt DEK for recipient");
+              }
+
+              // Step 3: Store recipient's encrypted DEK
+              const recipientEncryptedDEKBuffer = Buffer.from(
+                encryptResponse.CiphertextBlob,
+              );
+
+              await ctx.db.encryptedDEK.create({
+                data: {
+                  dekCiphertext: recipientEncryptedDEKBuffer,
+                  iv: ownerEncryptedDEK.iv,
+                  kekIdUsed: recipientKey.id,
+                  fileId: file.id,
+                },
+              });
+
+              rewrapResults.push({
+                fileId: file.id,
+                recipientUserId: recipient.id,
+                success: true,
+              });
+            } catch (error) {
+              rewrapResults.push({
+                fileId: file.id,
+                recipientUserId: recipient.id,
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+              });
+            }
+          }
+        }
+
+        return {
+          success: true,
+          addedFiles: newFileIds.length,
+          rewrapResults,
+        };
+      } catch (error) {
+        console.error("Error adding files to share:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to add files to share. Please try again.",
+        });
+      }
+    }),
+
+  addRecipientsToShare: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        recipientEmails: z.array(z.email()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, recipientEmails } = input;
+
+      try {
+        // Verify ownership of the share group
+        const shareGroup = await ctx.db.shareGroup.findFirst({
+          where: {
+            id: shareGroupId,
+            ownerId: user.id,
+          },
+          include: {
+            sharedUsers: true,
+            sharedFiles: {
+              include: {
+                file: {
+                  include: {
+                    encryptedDeks: {
+                      where: {
+                        kekUsed: {
+                          userId: user.id,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!shareGroup) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Share not found or you don't have permission",
+          });
+        }
+
+        // Find new recipient users by email
+        const recipients = await ctx.db.user.findMany({
+          where: {
+            email: { in: recipientEmails },
+          },
+          include: {
+            userKeys: {
+              where: {
+                isPrimary: true,
+              },
+            },
+          },
+        });
+
+        const foundEmails = new Set(recipients.map((r) => r.email));
+        const notFoundEmails = recipientEmails.filter(
+          (email) => !foundEmails.has(email),
+        );
+
+        if (notFoundEmails.length > 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Recipients not found: ${notFoundEmails.join(", ")}`,
+          });
+        }
+
+        // Check if all recipients have primary keys
+        const recipientsWithoutKeys = recipients.filter(
+          (r) => r.userKeys.length === 0,
+        );
+        if (recipientsWithoutKeys.length > 0) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `Recipients must have encryption keys set up: ${recipientsWithoutKeys
+              .map((r) => r.email)
+              .join(", ")}`,
+          });
+        }
+
+        // Filter out already shared users
+        const existingUserIds = new Set(
+          shareGroup.sharedUsers.map((u) => u.id),
+        );
+        const newRecipients = recipients.filter(
+          (r) => !existingUserIds.has(r.id),
+        );
+
+        if (newRecipients.length === 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "All recipients are already part of this share",
+          });
+        }
+
+        // Add new recipients to the share group
+        await ctx.db.shareGroup.update({
+          where: { id: shareGroupId },
+          data: {
+            sharedUsers: {
+              connect: newRecipients.map((r) => ({ id: r.id })),
+            },
+          },
+        });
+
+        // Rewrap DEKs for all new recipients for all shared files
+        const rewrapResults: {
+          fileId: string;
+          recipientUserId: string;
+          success: boolean;
+          error?: string;
+        }[] = [];
+
+        for (const sharedFile of shareGroup.sharedFiles) {
+          for (const recipient of newRecipients) {
+            try {
+              // Get the file owner's encrypted DEK
+              const ownerEncryptedDEK = sharedFile.file.encryptedDeks[0];
+              if (!ownerEncryptedDEK?.kekIdUsed) {
+                throw new Error("No encrypted DEK found for file");
+              }
+
+              // Get recipient's primary key
+              const recipientKey = recipient.userKeys[0];
+              if (!recipientKey) {
+                throw new Error("Recipient has no primary key");
+              }
+
+              // Get owner's key for decryption
+              const ownerKey = await ctx.db.userKey.findFirst({
+                where: {
+                  id: ownerEncryptedDEK.kekIdUsed,
+                  userId: user.id,
+                },
+              });
+
+              if (!ownerKey) {
+                throw new Error("Owner's encryption key not found");
+              }
+
+              // Decrypt and re-encrypt DEK using AWS KMS
+              const { DecryptCommand, EncryptCommand, KMSClient } =
+                await import("@aws-sdk/client-kms");
+              const client = new KMSClient({ region: "ap-southeast-1" });
+
+              // Step 1: Decrypt DEK with owner's KEK
+              const encryptedDEKBuffer = Buffer.from(
+                ownerEncryptedDEK.dekCiphertext,
+              );
+              const decryptCommand = new DecryptCommand({
+                CiphertextBlob: encryptedDEKBuffer,
+                KeyId: ownerKey.keyIdentifierInKMS,
+              });
+
+              const decryptResponse = await client.send(decryptCommand);
+              if (!decryptResponse.Plaintext) {
+                throw new Error("Failed to decrypt DEK");
+              }
+
+              // Step 2: Re-encrypt with recipient's KEK
+              const dekBuffer = Buffer.from(decryptResponse.Plaintext);
+              const encryptCommand = new EncryptCommand({
+                KeyId: recipientKey.keyIdentifierInKMS,
+                Plaintext: dekBuffer,
+              });
+
+              const encryptResponse = await client.send(encryptCommand);
+              if (!encryptResponse.CiphertextBlob) {
+                throw new Error("Failed to re-encrypt DEK for recipient");
+              }
+
+              // Step 3: Store recipient's encrypted DEK
+              const recipientEncryptedDEKBuffer = Buffer.from(
+                encryptResponse.CiphertextBlob,
+              );
+
+              await ctx.db.encryptedDEK.create({
+                data: {
+                  dekCiphertext: recipientEncryptedDEKBuffer,
+                  iv: ownerEncryptedDEK.iv,
+                  kekIdUsed: recipientKey.id,
+                  fileId: sharedFile.file.id,
+                },
+              });
+
+              rewrapResults.push({
+                fileId: sharedFile.file.id,
+                recipientUserId: recipient.id,
+                success: true,
+              });
+            } catch (error) {
+              rewrapResults.push({
+                fileId: sharedFile.file.id,
+                recipientUserId: recipient.id,
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+              });
+            }
+          }
+        }
+
+        return {
+          success: true,
+          addedRecipients: newRecipients.length,
+          rewrapResults,
+        };
+      } catch (error) {
+        console.error("Error adding recipients to share:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to add recipients to share. Please try again.",
+        });
+      }
+    }),
+  removeRecipientFromShare: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        recipientUserId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, recipientUserId } = input;
+
+      // Verify ownership of the share group
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          id: shareGroupId,
+          ownerId: user.id,
+        },
+        include: {
+          sharedFiles: true,
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or you don't have permission",
+        });
+      }
+
+      // Remove the recipient from the share group
+      await ctx.db.shareGroup.update({
+        where: { id: shareGroupId },
+        data: {
+          sharedUsers: {
+            disconnect: { id: recipientUserId },
+          },
+        },
+      });
+
+      // Remove all encrypted DEKs for this recipient for all files in this share
+      await ctx.db.encryptedDEK.deleteMany({
+        where: {
+          fileId: {
+            in: shareGroup.sharedFiles.map((sf) => sf.fileId),
+          },
+          kekUsed: {
+            userId: recipientUserId,
+          },
+        },
+      });
+
+      return { success: true };
+    }),
+
   trackDownload: protectedProcedure
     .input(
       z.object({
