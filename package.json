@@ -35,6 +35,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "qrcode": "^1.5.3",
+    "otplib": "^12.0.1",
     "@aws-sdk/client-kms": "^3.848.0",
     "@hookform/resolvers": "^5.1.1",
     "@prisma/client": "^6.12.0",
