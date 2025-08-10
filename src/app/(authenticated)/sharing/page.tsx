@@ -105,6 +105,7 @@ function SharedGroupCard({ group }: { group: SharedGroup }) {
               <EncryptedFileDownload
                 file={sharedFile.file}
                 className="cursor-pointer"
+                linkToken={group.linkToken}
               >
                 <Button variant="ghost" size="sm">
                   <DownloadIcon className="mr-2 h-4 w-4" />

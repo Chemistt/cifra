@@ -27,12 +27,14 @@ type EncryptedFileDownloadProps = {
   file: FileItem | MinimalFile;
   children?: React.ReactNode;
   className?: string;
+  linkToken?: string;
 };
 
 export function EncryptedFileDownload({
   file,
   children,
   className,
+  linkToken,
 }: EncryptedFileDownloadProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const trpc = useTRPC();
@@ -50,6 +52,15 @@ export function EncryptedFileDownload({
         console.error("Error decrypting DEK:", error);
         toast.error("Failed to decrypt file key");
         setIsDownloading(false);
+      },
+    }),
+  );
+
+  // Track download for sharing analytics
+  const trackDownloadMutation = useMutation(
+    trpc.sharing.trackDownload.mutationOptions({
+      onError: (error) => {
+        console.error("Error tracking download:", error);
       },
     }),
   );
@@ -90,6 +101,19 @@ export function EncryptedFileDownload({
 
       // Step 5: Download the decrypted file
       downloadFile(decryptedFile);
+
+      // Step 6: Track download if this is a shared file
+      if (linkToken) {
+        try {
+          await trackDownloadMutation.mutateAsync({
+            linkToken,
+            fileId: file.id,
+          });
+        } catch (error) {
+          // Log but don't interrupt user flow
+          console.error("Failed to track download:", error);
+        }
+      }
 
       toast.success(
         `File "${file.name}" decrypted and downloaded successfully`,
