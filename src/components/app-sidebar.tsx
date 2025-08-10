@@ -32,8 +32,8 @@ const items = [
     icon: FileIcon,
   },
   {
-    title: "Shared",
-    url: "/shared",
+    title: "Shared Files",
+    url: "/sharing",
     icon: ShareIcon,
   },
   {

@@ -68,7 +68,7 @@ export function FileSharingDialog({
   const createShareMutation = useMutation(
     trpc.sharing.createShareGroup.mutationOptions({
       onSuccess: (data) => {
-        const link = `${globalThis.location.origin}/shared/${data.linkToken}`;
+        const link = `${globalThis.location.origin}/sharing/${data.linkToken}`;
         setShareLink(link);
 
         toast.success(

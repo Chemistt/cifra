@@ -20,6 +20,7 @@ import {
   UploadIcon,
   XIcon,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
@@ -464,8 +465,14 @@ function EmptyState({
 // Main component
 export default function FilesPage() {
   const trpc = useTRPC();
+
+  // query params from url
+  const searchParameters = useSearchParams();
+  const autoFillSearchQuery = searchParameters.get("query");
+
+  // states
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(autoFillSearchQuery ?? "");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagMatchMode, setTagMatchMode] = useState<"any" | "all">("any");
@@ -482,23 +489,18 @@ export default function FilesPage() {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbData[]>([
     { id: undefined, name: "My Files" },
   ]);
-
   const [deleteDialogFileId, setDeleteDialogFileId] = useState<
     string | undefined
   >();
-
   const [renameDialogFile, setRenameDialogFile] = useState<
     { id: string; name: string } | undefined
   >();
-
   const [metadataDrawerFileId, setMetadataDrawerFileId] = useState<
     string | undefined
   >();
-
   const [shareDialogFiles, setShareDialogFiles] = useState<
     ShareableFile[] | undefined
   >();
-
   const [showTagDialog, setShowTagDialog] = useState<
     { id: string; type: "file" | "folder" } | undefined
   >();

@@ -147,7 +147,7 @@ function MySharesView() {
 }
 
 function MyShareCard({ share }: { share: MyShare }) {
-  const shareUrl = `${globalThis.location.origin}/shared/${share.linkToken}`;
+  const shareUrl = `${globalThis.location.origin}/sharing/${share.linkToken}`;
 
   const handleCopyLink = async () => {
     try {
