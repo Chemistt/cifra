@@ -35,8 +35,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "qrcode": "^1.5.3",
-    "otplib": "^12.0.1",
     "@aws-sdk/client-kms": "^3.848.0",
     "@hookform/resolvers": "^5.1.1",
     "@prisma/client": "^6.12.0",
@@ -61,6 +59,8 @@
     "lucide-react": "^0.525.0",
     "next": "^15.4.2",
     "next-themes": "^0.4.6",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
     "radix-ui": "latest",
     "react": "^19.1.0",
     "react-day-picker": "^9.7.0",
