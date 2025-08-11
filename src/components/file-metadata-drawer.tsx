@@ -257,29 +257,25 @@ function FileMetadataContent({ fileId }: { fileId: string }) {
               <span className="text-sm font-medium">Encryption Keys:</span>
               {fileMetadata.encryptionKeys.map((encKey) => (
                 <div key={encKey.id} className="rounded-lg border p-3 text-sm">
-                  {encKey.kekUsed && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <KeyIcon className="h-3 w-3" />
-                        <span className="font-medium">Key Alias:</span>
-                        <span className="text-muted-foreground">
-                          {encKey.kekUsed.alias}
-                        </span>
-                      </div>
-                      <div className="mt-1">
-                        <span className="font-medium">KMS Key ID:</span>
-                        <p className="text-muted-foreground font-mono text-xs break-all">
-                          {encKey.kekUsed.keyIdentifierInKMS}
-                        </p>
-                      </div>
-                      <div className="mt-1">
-                        <span className="font-medium">Created:</span>
-                        <span className="text-muted-foreground">
-                          {formatDate(encKey.kekUsed.createdAt)}
-                        </span>
-                      </div>
-                    </>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <KeyIcon className="h-3 w-3" />
+                    <span className="font-medium">Key Alias:</span>
+                    <span className="text-muted-foreground">
+                      {encKey.kekUsed.alias}
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <span className="font-medium">KMS Key ID:</span>
+                    <p className="text-muted-foreground font-mono text-xs break-all">
+                      {encKey.kekUsed.keyIdentifierInKMS}
+                    </p>
+                  </div>
+                  <div className="mt-1">
+                    <span className="font-medium">Created:</span>
+                    <span className="text-muted-foreground">
+                      {formatDate(encKey.kekUsed.createdAt)}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -350,7 +346,7 @@ function FileMetadataContent({ fileId }: { fileId: string }) {
                   <div>
                     <span className="font-medium">Shared Path:</span>
                     <p className="text-muted-foreground">
-                      {sharedFile.folderPath}
+                      {sharedFile.sharedBy.name}
                     </p>
                   </div>
                 </div>

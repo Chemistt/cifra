@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/no-null */
 import {
   CreateAliasCommand,
   CreateKeyCommand,
@@ -447,5 +448,321 @@ export const kmsRouter = createTRPCRouter({
           message: "Failed to decrypt DEK. Please try again.",
         });
       }
+    }),
+
+  // DEK rewrapping for file sharing - decrypt with sender's KEK and re-encrypt with recipient's KEK
+  rewrapDEKForRecipient: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        recipientUserId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { fileId, recipientUserId } = input;
+
+      try {
+        // Get the file and verify ownership
+        const file = await ctx.db.file.findFirst({
+          where: {
+            id: fileId,
+            ownerId: user.id,
+            deletedAt: null,
+          },
+          include: {
+            encryptedDeks: {
+              where: {
+                kekUsed: {
+                  userId: user.id, // Get the owner's encrypted DEK
+                },
+              },
+            },
+          },
+        });
+
+        if (!file) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "File not found or you don't have permission",
+          });
+        }
+
+        if (file.encryptedDeks.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "File is not encrypted",
+          });
+        }
+
+        // Get the file owner's encrypted DEK
+        const ownerEncryptedDEK = file.encryptedDeks[0];
+        if (!ownerEncryptedDEK) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "No encrypted DEK found for file owner",
+          });
+        }
+
+        // Get the owner's KEK for decryption
+        if (!ownerEncryptedDEK.kekIdUsed) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "No KEK ID found for encrypted DEK",
+          });
+        }
+
+        const ownerKey = await ctx.db.userKey.findFirst({
+          where: {
+            id: ownerEncryptedDEK.kekIdUsed,
+            userId: user.id,
+          },
+        });
+
+        if (!ownerKey) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Owner's encryption key not found",
+          });
+        }
+
+        // Get the recipient's primary KEK for encryption
+        const recipientKey = await ctx.db.userKey.findFirst({
+          where: {
+            userId: recipientUserId,
+            isPrimary: true,
+          },
+        });
+
+        if (!recipientKey) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Recipient's primary encryption key not found",
+          });
+        }
+
+        // Check if recipient already has access to this file
+        const existingRecipientDEK = await ctx.db.encryptedDEK.findFirst({
+          where: {
+            fileId: fileId,
+            kekUsed: {
+              userId: recipientUserId,
+            },
+          },
+        });
+
+        if (existingRecipientDEK) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Recipient already has access to this file",
+          });
+        }
+
+        // Step 1: Decrypt the DEK using owner's KEK
+        const encryptedDEKBuffer = Buffer.from(ownerEncryptedDEK.dekCiphertext);
+        const decryptCommand = new DecryptCommand({
+          CiphertextBlob: encryptedDEKBuffer,
+          KeyId: ownerKey.keyIdentifierInKMS,
+        });
+
+        const decryptResponse = await client.send(decryptCommand);
+
+        if (!decryptResponse.Plaintext) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to decrypt DEK",
+          });
+        }
+
+        // Step 2: Re-encrypt the DEK using recipient's KEK
+        const dekBuffer = Buffer.from(decryptResponse.Plaintext);
+        const encryptCommand = new EncryptCommand({
+          KeyId: recipientKey.keyIdentifierInKMS,
+          Plaintext: dekBuffer,
+        });
+
+        const encryptResponse = await client.send(encryptCommand);
+
+        if (!encryptResponse.CiphertextBlob) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to re-encrypt DEK for recipient",
+          });
+        }
+
+        // Step 3: Store the recipient's encrypted DEK
+        const recipientEncryptedDEKBuffer = Buffer.from(
+          encryptResponse.CiphertextBlob,
+        );
+
+        const newEncryptedDEK = await ctx.db.encryptedDEK.create({
+          data: {
+            dekCiphertext: recipientEncryptedDEKBuffer,
+            iv: ownerEncryptedDEK.iv, // Same IV as owner since it's the same file
+            kekIdUsed: recipientKey.id,
+            fileId: fileId,
+          },
+        });
+
+        return {
+          success: true,
+          recipientEncryptedDEKId: newEncryptedDEK.id,
+          recipientKeyId: recipientKey.id,
+        };
+      } catch (error) {
+        console.error("Error rewrapping DEK:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to share file encryption key. Please try again.",
+        });
+      }
+    }),
+
+  // Batch DEK rewrapping for multiple recipients
+  rewrapDEKForMultipleRecipients: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        recipientUserIds: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { fileId, recipientUserIds } = input;
+
+      const results: {
+        recipientUserId: string;
+        success: boolean;
+        error?: string;
+      }[] = [];
+
+      for (const recipientUserId of recipientUserIds) {
+        try {
+          // Use the same logic as the single recipient function
+          // Get the file and verify ownership
+          const file = await ctx.db.file.findFirst({
+            where: {
+              id: fileId,
+              ownerId: user.id,
+              deletedAt: null,
+            },
+            include: {
+              encryptedDeks: {
+                where: {
+                  kekUsed: {
+                    userId: user.id, // Get the owner's encrypted DEK
+                  },
+                },
+              },
+            },
+          });
+
+          if (!file || file.encryptedDeks.length === 0) {
+            throw new Error("File not found or not encrypted");
+          }
+
+          const ownerEncryptedDEK = file.encryptedDeks[0];
+          if (!ownerEncryptedDEK) {
+            throw new Error("No encrypted DEK found for file owner");
+          }
+
+          // Check if recipient already has access
+          const existingRecipientDEK = await ctx.db.encryptedDEK.findFirst({
+            where: {
+              fileId: fileId,
+              kekUsed: {
+                userId: recipientUserId,
+              },
+            },
+          });
+
+          if (existingRecipientDEK) {
+            throw new Error("Recipient already has access to this file");
+          }
+
+          // Get keys
+          if (!ownerEncryptedDEK.kekIdUsed) {
+            throw new Error("No KEK ID found for encrypted DEK");
+          }
+
+          const [ownerKey, recipientKey] = await Promise.all([
+            ctx.db.userKey.findFirst({
+              where: {
+                id: ownerEncryptedDEK.kekIdUsed,
+                userId: user.id,
+              },
+            }),
+            ctx.db.userKey.findFirst({
+              where: {
+                userId: recipientUserId,
+                isPrimary: true,
+              },
+            }),
+          ]);
+
+          if (!ownerKey || !recipientKey) {
+            throw new Error("Encryption keys not found");
+          }
+
+          // Decrypt and re-encrypt DEK
+          const encryptedDEKBuffer = Buffer.from(
+            ownerEncryptedDEK.dekCiphertext,
+          );
+          const decryptCommand = new DecryptCommand({
+            CiphertextBlob: encryptedDEKBuffer,
+            KeyId: ownerKey.keyIdentifierInKMS,
+          });
+
+          const decryptResponse = await client.send(decryptCommand);
+
+          if (!decryptResponse.Plaintext) {
+            throw new Error("Failed to decrypt DEK");
+          }
+
+          const dekBuffer = Buffer.from(decryptResponse.Plaintext);
+          const encryptCommand = new EncryptCommand({
+            KeyId: recipientKey.keyIdentifierInKMS,
+            Plaintext: dekBuffer,
+          });
+
+          const encryptResponse = await client.send(encryptCommand);
+
+          if (!encryptResponse.CiphertextBlob) {
+            throw new Error("Failed to re-encrypt DEK for recipient");
+          }
+
+          // Store the recipient's encrypted DEK
+          const recipientEncryptedDEKBuffer = Buffer.from(
+            encryptResponse.CiphertextBlob,
+          );
+
+          await ctx.db.encryptedDEK.create({
+            data: {
+              dekCiphertext: recipientEncryptedDEKBuffer,
+              iv: ownerEncryptedDEK.iv,
+              kekIdUsed: recipientKey.id,
+              fileId: fileId,
+            },
+          });
+
+          results.push({ recipientUserId, success: true });
+        } catch (error) {
+          results.push({
+            recipientUserId,
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+
+      return {
+        results,
+        totalRecipients: recipientUserIds.length,
+        successfulShares: results.filter((r) => r.success).length,
+        failedShares: results.filter((r) => !r.success).length,
+      };
     }),
 });

@@ -3,6 +3,7 @@ import { filesRouter } from "@/server/api/routers/files";
 import { kmsRouter } from "@/server/api/routers/kms";
 import { passkeyRouter } from "@/server/api/routers/passkey";
 import { profileRouter } from "@/server/api/routers/profile";
+import { sharingRouter } from "@/server/api/routers/sharing";
 import { totpRouter } from "@/server/api/routers/totp";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 
@@ -18,6 +19,7 @@ export const appRouter = createTRPCRouter({
   files: filesRouter,
   deleted: deletedRouter,
   kms: kmsRouter,
+  sharing: sharingRouter,
 });
 
 // export type definition of API
