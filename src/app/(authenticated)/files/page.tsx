@@ -10,7 +10,6 @@ import {
   InfoIcon,
   KeyRoundIcon,
   LockIcon,
-  MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
   ShareIcon,
@@ -52,11 +51,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -104,34 +103,32 @@ type ViewProps = {
   onFileAction: (action: FileAction) => void;
 };
 
-type FileActionsDropdownProps = {
+type FileActionsContextMenuProps = {
   file: FolderContents["files"][number] | SearchContents["files"][number];
   onShowTag: (itemId: string, itemType: "file" | "folder") => void;
   onFileAction: (action: FileAction) => void;
+  children: React.ReactNode;
 };
 
-function FileActionsDropdown({
+function FileActionsContextMenu({
   file,
   onShowTag,
   onFileAction,
-}: FileActionsDropdownProps) {
+  children,
+}: FileActionsContextMenuProps) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <MoreVerticalIcon className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
           onClick={() => {
             onFileAction({ type: "metadata", fileId: file.id });
           }}
         >
           <InfoIcon className="mr-2 h-4 w-4" />
           File Info
-        </DropdownMenuItem>
-        <DropdownMenuItem
+        </ContextMenuItem>
+        <ContextMenuItem
           onClick={() => {
             onFileAction({
               type: "rename",
@@ -141,73 +138,73 @@ function FileActionsDropdown({
         >
           <EditIcon className="mr-2 h-4 w-4" />
           Rename
-        </DropdownMenuItem>
-        <DropdownMenuItem
+        </ContextMenuItem>
+        <ContextMenuItem
           onClick={() => {
             onFileAction({ type: "download", fileId: file.id });
           }}
         >
           <DownloadIcon className="mr-2 h-4 w-4" />
           Download
-        </DropdownMenuItem>
+        </ContextMenuItem>
         {file.passwordHash ? (
           <>
-            <DropdownMenuItem
+            <ContextMenuItem
               onClick={() => {
                 onFileAction({ type: "changePassword", fileId: file.id });
               }}
             >
               <KeyRoundIcon className="mr-2 h-4 w-4" />
               Change Password
-            </DropdownMenuItem>
+            </ContextMenuItem>
 
-            <DropdownMenuItem
+            <ContextMenuItem
               onClick={() => {
                 onFileAction({ type: "removePassword", fileId: file.id });
               }}
             >
               <UnlockIcon className="mr-2 h-4 w-4" />
               Remove Password
-            </DropdownMenuItem>
+            </ContextMenuItem>
           </>
         ) : (
-          <DropdownMenuItem
+          <ContextMenuItem
             onClick={() => {
               onFileAction({ type: "setPassword", fileId: file.id });
             }}
           >
             <LockIcon className="mr-2 h-4 w-4" />
             Set Password
-          </DropdownMenuItem>
+          </ContextMenuItem>
         )}
         {file.encryptedDeks.length > 0 && (
-          <DropdownMenuItem
+          <ContextMenuItem
             onClick={() => {
               onFileAction({ type: "share", fileId: file.id });
             }}
           >
             <ShareIcon className="mr-2 h-4 w-4" />
             Share
-          </DropdownMenuItem>
+          </ContextMenuItem>
         )}
-        <DropdownMenuItem
+        <ContextMenuItem
           onClick={() => {
             onShowTag(file.id, "file");
           }}
         >
           <TagIcon className="mr-2 h-4 w-4" />
           Add Tag
-        </DropdownMenuItem>
-        <DropdownMenuItem
+        </ContextMenuItem>
+        <ContextMenuItem
           onClick={() => {
             onFileAction({ type: "delete", fileId: file.id });
           }}
         >
           <Trash2Icon className="mr-2 h-4 w-4" />
           Delete File
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -273,55 +270,57 @@ function GridView({
 
       {/* Files */}
       {filesToRender.map((files) => (
-        <Card key={files.id} className="transition-shadow hover:shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="text-2xl">{getFileIcon(files.mimeType)}</div>
-                {files.passwordHash && (
-                  <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h4 className="truncate font-medium">{files.name}</h4>
-                <p className="text-muted-foreground text-sm">
-                  {formatFileSize(files.size)}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {formatDate(files.updatedAt)}
-                </p>
-                {"path" in files && files.path.length > 0 && (
-                  <p className="text-muted-foreground text-xs italic">
-                    📁 {formatPathDisplay(files.path)}
+        <FileActionsContextMenu
+          key={files.id}
+          file={files}
+          onFileAction={onFileAction}
+          onShowTag={onShowTag}
+        >
+          <Card className="transition-shadow hover:shadow-md">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="text-2xl">{getFileIcon(files.mimeType)}</div>
+                  {files.passwordHash && (
+                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate font-medium">{files.name}</h4>
+                  <p className="text-muted-foreground text-sm">
+                    {formatFileSize(files.size)}
                   </p>
-                )}
-                {files.tags.length > 0 && (
-                  <div className="mt-1 flex gap-1">
-                    {files.tags.slice(0, 2).map((tag) => (
-                      <Badge
-                        key={tag.id}
-                        variant="secondary"
-                        className="text-xs"
-                      >
-                        {tag.name}
-                      </Badge>
-                    ))}
-                    {files.tags.length > 2 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{files.tags.length - 2}
-                      </Badge>
-                    )}
-                  </div>
-                )}
+                  <p className="text-muted-foreground text-xs">
+                    {formatDate(files.updatedAt)}
+                  </p>
+                  {"path" in files && files.path.length > 0 && (
+                    <p className="text-muted-foreground text-xs italic">
+                      📁 {formatPathDisplay(files.path)}
+                    </p>
+                  )}
+                  {files.tags.length > 0 && (
+                    <div className="mt-1 flex gap-1">
+                      {files.tags.slice(0, 2).map((tag) => (
+                        <Badge
+                          key={tag.id}
+                          variant="secondary"
+                          className="text-xs"
+                        >
+                          {tag.name}
+                        </Badge>
+                      ))}
+                      {files.tags.length > 2 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{files.tags.length - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-              <FileActionsDropdown
-                file={files}
-                onFileAction={onFileAction}
-                onShowTag={onShowTag}
-              />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </FileActionsContextMenu>
       ))}
     </div>
   );
@@ -379,43 +378,42 @@ function ListView({
 
       {/* Files */}
       {filesToRender.map((file) => (
-        <div
+        <FileActionsContextMenu
           key={file.id}
-          className="hover:bg-muted flex items-center gap-4 rounded-lg p-3"
+          file={file}
+          onFileAction={onFileAction}
+          onShowTag={onShowTag}
         >
-          <div className="relative">
-            <div className="text-xl">{getFileIcon(file.mimeType)}</div>
-            {file.passwordHash && (
-              <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="font-medium">{file.name}</h4>
-            {"path" in file && file.path.length > 0 && (
-              <p className="text-muted-foreground text-xs italic">
-                📁 {formatPathDisplay(file.path)}
-              </p>
-            )}
-          </div>
-          <div className="text-muted-foreground flex items-center gap-4 text-sm">
-            <span>{formatDate(file.updatedAt)}</span>
-            <span>{formatFileSize(file.size)}</span>
-          </div>
-          {file.tags.length > 0 && (
-            <div className="flex gap-1">
-              {file.tags.slice(0, 2).map((tag) => (
-                <Badge key={tag.id} variant="secondary" className="text-xs">
-                  {tag.name}
-                </Badge>
-              ))}
+          <div className="hover:bg-muted flex items-center gap-4 rounded-lg p-3">
+            <div className="relative">
+              <div className="text-xl">{getFileIcon(file.mimeType)}</div>
+              {file.passwordHash && (
+                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+              )}
             </div>
-          )}
-          <FileActionsDropdown
-            file={file}
-            onFileAction={onFileAction}
-            onShowTag={onShowTag}
-          />
-        </div>
+            <div className="min-w-0 flex-1">
+              <h4 className="font-medium">{file.name}</h4>
+              {"path" in file && file.path.length > 0 && (
+                <p className="text-muted-foreground text-xs italic">
+                  📁 {formatPathDisplay(file.path)}
+                </p>
+              )}
+            </div>
+            <div className="text-muted-foreground flex items-center gap-4 text-sm">
+              <span>{formatDate(file.updatedAt)}</span>
+              <span>{formatFileSize(file.size)}</span>
+            </div>
+            {file.tags.length > 0 && (
+              <div className="flex gap-1">
+                {file.tags.slice(0, 2).map((tag) => (
+                  <Badge key={tag.id} variant="secondary" className="text-xs">
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        </FileActionsContextMenu>
       ))}
     </div>
   );
