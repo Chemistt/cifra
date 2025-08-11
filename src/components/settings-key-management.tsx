@@ -79,7 +79,7 @@ const createKeySchema = z.object({
   alias: z.string().min(1, "Alias is required").max(256, "Alias too long"),
   description: z.string().max(8192, "Description too long").optional(),
   isPrimary: z.boolean(),
-  expiryOption: z.enum(["30", "60", "120", "never"]).default("never"),
+  expiryOption: z.enum(["30", "60", "90", "120", "never"]).default("never"),
 });
 
 const updateKeySchema = z.object({
@@ -333,6 +333,7 @@ export function SettingsKeyManagement() {
                           <SelectItem value="never">Never Expires</SelectItem>
                           <SelectItem value="30">30 days</SelectItem>
                           <SelectItem value="60">60 days</SelectItem>
+                          <SelectItem value="90">90 days</SelectItem>
                           <SelectItem value="120">120 days</SelectItem>
                         </SelectContent>
                       </Select>
@@ -663,6 +664,7 @@ export function SettingsKeyManagement() {
                               </SelectItem>
                               <SelectItem value="30">30 days</SelectItem>
                               <SelectItem value="60">60 days</SelectItem>
+                              <SelectItem value="90">90 days</SelectItem>
                               <SelectItem value="120">120 days</SelectItem>
                             </SelectContent>
                           </Select>

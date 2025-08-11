@@ -41,7 +41,7 @@ export const kmsRouter = createTRPCRouter({
         alias: z.string().min(1).max(256),
         description: z.string().max(8192).optional(),
         isPrimary: z.boolean(),
-        expiryOption: z.enum(["30", "60", "120", "never"]).optional(),
+        expiryOption: z.enum(["30", "60", "90", "120", "never"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -101,27 +101,13 @@ export const kmsRouter = createTRPCRouter({
         await client.send(createAliasCommand);
 
         // Compute expiresAt from expiryOption
-        let expiresAt: Date | undefined;
         const now = new Date();
-        switch (expiryOption) {
-          case "30": {
-            expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-            break;
-          }
-          case "60": {
-            expiresAt = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-            break;
-          }
-          case "120": {
-            expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
-            break;
-          }
-          default: {
-            // "never" or undefined => no expiry
-            expiresAt = undefined;
-            break;
-          }
-        }
+        const expiresAt =
+          !expiryOption || expiryOption === "never"
+            ? undefined
+            : new Date(
+                now.getTime() + Number(expiryOption) * 24 * 60 * 60 * 1000,
+              );
 
         // Store the key reference in the database
         const userKey = await ctx.db.userKey.create({
