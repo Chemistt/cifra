@@ -35,6 +35,8 @@ import {
   type ShareableFile,
 } from "@/components/file-sharing-dialog";
 import { FolderCreateDialog } from "@/components/folder-create-dialog";
+import { FolderDeleteDialog } from "@/components/folder-delete-dialog";
+import { FolderRenameDialog } from "@/components/folder-rename-dialog";
 import { GlobalDropzone } from "@/components/global-dropzone";
 import { LoadingView } from "@/components/loading-view";
 import { RemovePasswordDialog } from "@/components/remove-password-dialog";
@@ -95,12 +97,17 @@ type FileAction =
   | { type: "share"; fileId: string }
   | { type: "download"; fileId: string };
 
+type FolderAction =
+  | { type: "rename"; folder: { id: string; name: string } }
+  | { type: "delete"; folderId: string };
+
 type ViewProps = {
   foldersToRender: FolderContents["folders"] | SearchContents["folders"];
   filesToRender: FolderContents["files"] | SearchContents["files"];
   navigateToFolder: (folder: { id: string; name: string }) => void;
   onShowTag: (itemId: string, itemType: "file" | "folder") => void;
   onFileAction: (action: FileAction) => void;
+  onFolderAction: (action: FolderAction) => void;
 };
 
 type FileActionsContextMenuProps = {
@@ -208,64 +215,120 @@ function FileActionsContextMenu({
   );
 }
 
+type FolderActionsContextMenuProps = {
+  folder: FolderContents["folders"][number] | SearchContents["folders"][number];
+  onShowTag: (itemId: string, itemType: "file" | "folder") => void;
+  onFolderAction: (action: FolderAction) => void;
+  children: React.ReactNode;
+};
+
+function FolderActionsContextMenu({
+  folder,
+  onShowTag,
+  onFolderAction,
+  children,
+}: FolderActionsContextMenuProps) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          onClick={() => {
+            onFolderAction({
+              type: "rename",
+              folder: { id: folder.id, name: folder.name },
+            });
+          }}
+        >
+          <EditIcon className="mr-2 h-4 w-4" />
+          Rename
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            onShowTag(folder.id, "folder");
+          }}
+        >
+          <TagIcon className="mr-2 h-4 w-4" />
+          Add Tag
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            onFolderAction({ type: "delete", folderId: folder.id });
+          }}
+        >
+          <Trash2Icon className="mr-2 h-4 w-4" />
+          Delete Folder
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 function GridView({
   foldersToRender,
   filesToRender,
   navigateToFolder,
   onShowTag,
   onFileAction,
+  onFolderAction,
 }: ViewProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {/* Folders */}
       {foldersToRender.map((folder) => (
-        <Card
+        <FolderActionsContextMenu
           key={folder.id}
-          className="cursor-pointer transition-shadow hover:shadow-md"
-          onClick={() => {
-            navigateToFolder(folder);
-          }}
+          folder={folder}
+          onFolderAction={onFolderAction}
+          onShowTag={onShowTag}
         >
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <FolderIcon className="h-8 w-8 text-blue-500" />
-                {folder.passwordHash && (
-                  <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h4 className="truncate font-medium">{folder.name}</h4>
-                <p className="text-muted-foreground text-sm">
-                  {formatDate(folder.updatedAt)}
-                </p>
-                {"path" in folder && folder.path.length > 0 && (
-                  <p className="text-muted-foreground text-xs italic">
-                    📁 {formatPathDisplay(folder.path)}
+          <Card
+            className="cursor-pointer transition-shadow hover:shadow-md"
+            onClick={() => {
+              navigateToFolder(folder);
+            }}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <FolderIcon className="h-8 w-8 text-blue-500" />
+                  {folder.passwordHash && (
+                    <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate font-medium">{folder.name}</h4>
+                  <p className="text-muted-foreground text-sm">
+                    {formatDate(folder.updatedAt)}
                   </p>
-                )}
-                {folder.tags.length > 0 && (
-                  <div className="mt-1 flex gap-1">
-                    {folder.tags.slice(0, 2).map((tag) => (
-                      <Badge
-                        key={tag.id}
-                        variant="secondary"
-                        className="text-xs"
-                      >
-                        {tag.name}
-                      </Badge>
-                    ))}
-                    {folder.tags.length > 2 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{folder.tags.length - 2}
-                      </Badge>
-                    )}
-                  </div>
-                )}
+                  {"path" in folder && folder.path.length > 0 && (
+                    <p className="text-muted-foreground text-xs italic">
+                      📁 {formatPathDisplay(folder.path)}
+                    </p>
+                  )}
+                  {folder.tags.length > 0 && (
+                    <div className="mt-1 flex gap-1">
+                      {folder.tags.slice(0, 2).map((tag) => (
+                        <Badge
+                          key={tag.id}
+                          variant="secondary"
+                          className="text-xs"
+                        >
+                          {tag.name}
+                        </Badge>
+                      ))}
+                      {folder.tags.length > 2 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{folder.tags.length - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </FolderActionsContextMenu>
       ))}
 
       {/* Files */}
@@ -332,46 +395,53 @@ function ListView({
   navigateToFolder,
   onShowTag,
   onFileAction,
+  onFolderAction,
 }: ViewProps) {
   return (
     <div className="space-y-2">
       {/* Folders */}
       {foldersToRender.map((folder) => (
-        <div
+        <FolderActionsContextMenu
           key={folder.id}
-          className="hover:bg-muted flex cursor-pointer items-center gap-4 rounded-lg p-3"
-          onClick={() => {
-            navigateToFolder(folder);
-          }}
+          folder={folder}
+          onFolderAction={onFolderAction}
+          onShowTag={onShowTag}
         >
-          <div className="relative">
-            <FolderIcon className="h-6 w-6 text-blue-500" />
-            {folder.passwordHash && (
-              <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="font-medium">{folder.name}</h4>
-            {"path" in folder && folder.path.length > 0 && (
-              <p className="text-muted-foreground text-xs italic">
-                📁 {formatPathDisplay(folder.path)}
-              </p>
-            )}
-          </div>
-          <div className="text-muted-foreground flex items-center gap-4 text-sm">
-            <span>{formatDate(folder.updatedAt)}</span>
-            <span>Folder</span>
-          </div>
-          {folder.tags.length > 0 && (
-            <div className="flex gap-1">
-              {folder.tags.slice(0, 2).map((tag) => (
-                <Badge key={tag.id} variant="secondary" className="text-xs">
-                  {tag.name}
-                </Badge>
-              ))}
+          <div
+            className="hover:bg-muted flex cursor-pointer items-center gap-4 rounded-lg p-3"
+            onClick={() => {
+              navigateToFolder(folder);
+            }}
+          >
+            <div className="relative">
+              <FolderIcon className="h-6 w-6 text-blue-500" />
+              {folder.passwordHash && (
+                <LockIcon className="absolute -top-1 -right-1 h-3 w-3 text-amber-500" />
+              )}
             </div>
-          )}
-        </div>
+            <div className="min-w-0 flex-1">
+              <h4 className="font-medium">{folder.name}</h4>
+              {"path" in folder && folder.path.length > 0 && (
+                <p className="text-muted-foreground text-xs italic">
+                  📁 {formatPathDisplay(folder.path)}
+                </p>
+              )}
+            </div>
+            <div className="text-muted-foreground flex items-center gap-4 text-sm">
+              <span>{formatDate(folder.updatedAt)}</span>
+              <span>Folder</span>
+            </div>
+            {folder.tags.length > 0 && (
+              <div className="flex gap-1">
+                {folder.tags.slice(0, 2).map((tag) => (
+                  <Badge key={tag.id} variant="secondary" className="text-xs">
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        </FolderActionsContextMenu>
       ))}
 
       <Separator />
@@ -485,6 +555,14 @@ export default function FilesPage() {
   >();
   const [downloadFileId, setDownloadFileId] = useState<string | undefined>();
 
+  // Folder dialog states
+  const [deleteFolderDialog, setDeleteFolderDialog] = useState<
+    { id: string; name: string } | undefined
+  >();
+  const [renameFolderDialog, setRenameFolderDialog] = useState<
+    { id: string; name: string } | undefined
+  >();
+
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -593,6 +671,32 @@ export default function FilesPage() {
     }
   };
 
+  // Folder action handler
+  const handleFolderAction = (action: FolderAction) => {
+    switch (action.type) {
+      case "rename": {
+        setRenameFolderDialog(action.folder);
+        break;
+      }
+      case "delete": {
+        // Find the folder details from current folder or search results
+        const folderToDelete = foldersToRender.find(
+          (f) => f.id === action.folderId,
+        );
+        if (folderToDelete) {
+          setDeleteFolderDialog({
+            id: folderToDelete.id,
+            name: folderToDelete.name,
+          });
+        }
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+  };
+
   // Tag filtering handlers
   const handleTagToggle = (tagId: string) => {
     setSelectedTagIds((previous) =>
@@ -651,6 +755,7 @@ export default function FilesPage() {
           navigateToFolder={navigateToFolder}
           onShowTag={handleShowTag}
           onFileAction={handleFileAction}
+          onFolderAction={handleFolderAction}
         />
       );
     }
@@ -662,6 +767,7 @@ export default function FilesPage() {
         navigateToFolder={navigateToFolder}
         onShowTag={handleShowTag}
         onFileAction={handleFileAction}
+        onFolderAction={handleFolderAction}
       />
     );
   };
@@ -990,6 +1096,30 @@ export default function FilesPage() {
               />
             ) : undefined;
           })()}
+
+        {/* Folder Rename Dialog */}
+        {renameFolderDialog && (
+          <FolderRenameDialog
+            folderId={renameFolderDialog.id}
+            folderName={renameFolderDialog.name}
+            open={!!renameFolderDialog}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setRenameFolderDialog(undefined);
+            }}
+          />
+        )}
+
+        {/* Folder Delete Dialog */}
+        {deleteFolderDialog && (
+          <FolderDeleteDialog
+            folderId={deleteFolderDialog.id}
+            folderName={deleteFolderDialog.name}
+            open={!!deleteFolderDialog}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setDeleteFolderDialog(undefined);
+            }}
+          />
+        )}
       </div>
     </GlobalDropzone>
   );

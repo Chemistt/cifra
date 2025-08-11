@@ -1062,6 +1062,106 @@ export const filesRouter = createTRPCRouter({
           }));
       return { success: true };
     }),
+  renameFolder: protectedProcedure
+    .input(
+      z.object({
+        folderId: z.string(),
+        newName: z.string().min(1, "Folder name cannot be empty"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { folderId, newName } = input;
+
+      // First, verify the folder belongs to the user
+      const existingFolder = await ctx.db.folder.findFirst({
+        where: {
+          id: folderId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!existingFolder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Folder not found or you don't have permission to edit it",
+        });
+      }
+
+      // Update the folder name
+      const updatedFolder = await ctx.db.folder.update({
+        where: {
+          id: folderId,
+        },
+        data: {
+          name: newName,
+          updatedAt: new Date(),
+        },
+      });
+
+      return updatedFolder;
+    }),
+  deleteFolder: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { id } = input;
+
+      // First, verify the folder belongs to the user
+      const existingFolder = await ctx.db.folder.findFirst({
+        where: {
+          id,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!existingFolder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Folder not found or you don't have permission to delete it",
+        });
+      }
+
+      // Check if folder has subfolders or files
+      const [subFolders, files] = await Promise.all([
+        ctx.db.folder.count({
+          where: {
+            parentId: id,
+            deletedAt: null,
+          },
+        }),
+        ctx.db.file.count({
+          where: {
+            folderId: id,
+            deletedAt: null,
+          },
+        }),
+      ]);
+
+      if (subFolders > 0 || files > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Cannot delete folder that contains files or subfolders. Please move or delete the contents first.",
+        });
+      }
+
+      // Soft delete the folder
+      const deletedFolder = await ctx.db.folder.update({
+        where: {
+          id,
+        },
+        data: {
+          deletedAt: new Date(),
+        },
+      });
+
+      return deletedFolder;
+    }),
 });
 
 // Helper function for file size formatting
