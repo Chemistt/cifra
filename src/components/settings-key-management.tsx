@@ -7,10 +7,12 @@ import {
   KeyIcon,
   Loader2Icon,
   PlusIcon,
+  RefreshCcwIcon,
   ShieldIcon,
   TrashIcon,
 } from "lucide-react";
 import { useState } from "react";
+import type { Resolver } from "react-hook-form";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -53,6 +55,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -70,6 +79,7 @@ const createKeySchema = z.object({
   alias: z.string().min(1, "Alias is required").max(256, "Alias too long"),
   description: z.string().max(8192, "Description too long").optional(),
   isPrimary: z.boolean(),
+  expiryOption: z.enum(["30", "60", "120", "never"]).default("never"),
 });
 
 const updateKeySchema = z.object({
@@ -98,16 +108,21 @@ export function SettingsKeyManagement() {
   const keys = useSuspenseQuery(trpc.kms.getKeys.queryOptions());
 
   const createForm = useForm<CreateKeyFormData>({
-    resolver: zodResolver(createKeySchema),
+    resolver: zodResolver(
+      createKeySchema,
+    ) as unknown as Resolver<CreateKeyFormData>,
     defaultValues: {
       alias: "",
       description: "",
       isPrimary: false,
+      expiryOption: "never",
     },
   });
 
   const editForm = useForm<UpdateKeyFormData>({
-    resolver: zodResolver(updateKeySchema),
+    resolver: zodResolver(
+      updateKeySchema,
+    ) as unknown as Resolver<UpdateKeyFormData>,
     defaultValues: {
       alias: "",
       description: "",
@@ -156,6 +171,22 @@ export function SettingsKeyManagement() {
     }),
   );
 
+  const rotateKeyMutation = useMutation(
+    trpc.kms.rotateDEKsToKey.mutationOptions({
+      onSuccess: (data) => {
+        toast.success(
+          `Key rotation completed: ${String(data.rewrapped)}/${String(data.totalToRewrap)} rewrapped${
+            data.failed ? `, ${String(data.failed)} failed` : ""
+          }`,
+        );
+        void keys.refetch();
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+
   const handleCreateKey = (data: CreateKeyFormData) => {
     createKeyMutation.mutate(data);
   };
@@ -189,6 +220,7 @@ export function SettingsKeyManagement() {
   };
 
   const hasKeys = keys.data.length > 0;
+  const primaryKey = keys.data.find((k) => k.isPrimary);
 
   const renderEmptyState = () => (
     <div className="flex flex-col items-center justify-center py-12">
@@ -282,6 +314,36 @@ export function SettingsKeyManagement() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={createForm.control}
+                name="expiryOption"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Expiry</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={createKeyMutation.isPending}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Never Expires" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="never">Never Expires</SelectItem>
+                          <SelectItem value="30">30 days</SelectItem>
+                          <SelectItem value="60">60 days</SelectItem>
+                          <SelectItem value="120">120 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormDescription>
+                      Automatically expire this key after a period.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="flex justify-end space-x-2">
                 <Button
                   type="button"
@@ -321,6 +383,7 @@ export function SettingsKeyManagement() {
           <TableRow>
             <TableHead>Alias</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Expires</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
@@ -352,10 +415,76 @@ export function SettingsKeyManagement() {
                 <Badge variant="default">Active</Badge>
               </TableCell>
               <TableCell className="text-muted-foreground">
+                {key.expiresAt ? (
+                  <div className="flex items-center">
+                    <span>
+                      {formatDate(new Date(key.expiresAt as unknown as Date))}
+                    </span>
+                    {new Date(key.expiresAt as unknown as Date).getTime() <
+                    Date.now() ? (
+                      <span className="text-destructive ml-2 text-xs">
+                        Expired
+                      </span>
+                    ) : undefined}
+                  </div>
+                ) : (
+                  <span>Never</span>
+                )}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
                 {formatDate(key.createdAt)}
               </TableCell>
               <TableCell>
                 <div className="flex items-center space-x-2">
+                  {!key.isPrimary && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={rotateKeyMutation.isPending}
+                        >
+                          {rotateKeyMutation.isPending ? (
+                            <Loader2Icon className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcwIcon className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Rotate DEKs to this key
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will rewrap all file keys currently encrypted
+                            with your primary key to use &quot;{key.alias}&quot;
+                            and set it as primary. Continue?
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              if (!primaryKey) {
+                                toast.error(
+                                  "No primary key found to rotate from",
+                                );
+                                return;
+                              }
+                              rotateKeyMutation.mutate({
+                                fromKeyId: primaryKey.id,
+                                toKeyId: key.id,
+                                makePrimary: true,
+                              });
+                            }}
+                          >
+                            Rotate here
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -510,6 +639,38 @@ export function SettingsKeyManagement() {
                             disabled={createKeyMutation.isPending}
                           />
                         </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={createForm.control}
+                    name="expiryOption"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Expiry</FormLabel>
+                        <FormControl>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            disabled={createKeyMutation.isPending}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Never Expires" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="never">
+                                Never Expires
+                              </SelectItem>
+                              <SelectItem value="30">30 days</SelectItem>
+                              <SelectItem value="60">60 days</SelectItem>
+                              <SelectItem value="120">120 days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormDescription>
+                          Automatically expire this key after a period.
+                        </FormDescription>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />

@@ -12,6 +12,7 @@ import {
   ScheduleKeyDeletionCommand,
   UpdateKeyDescriptionCommand,
 } from "@aws-sdk/client-kms";
+import { AuditAction } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -40,11 +41,12 @@ export const kmsRouter = createTRPCRouter({
         alias: z.string().min(1).max(256),
         description: z.string().max(8192).optional(),
         isPrimary: z.boolean(),
+        expiryOption: z.enum(["30", "60", "120", "never"]).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const { user } = ctx.session;
-      const { alias, description, isPrimary } = input;
+      const { alias, description, isPrimary, expiryOption } = input;
 
       try {
         // If this is set as primary, unset other primary keys
@@ -98,12 +100,36 @@ export const kmsRouter = createTRPCRouter({
 
         await client.send(createAliasCommand);
 
+        // Compute expiresAt from expiryOption
+        let expiresAt: Date | undefined;
+        const now = new Date();
+        switch (expiryOption) {
+          case "30": {
+            expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            break;
+          }
+          case "60": {
+            expiresAt = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+            break;
+          }
+          case "120": {
+            expiresAt = new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000);
+            break;
+          }
+          default: {
+            // "never" or undefined => no expiry
+            expiresAt = undefined;
+            break;
+          }
+        }
+
         // Store the key reference in the database
         const userKey = await ctx.db.userKey.create({
           data: {
             alias,
             description,
             isPrimary,
+            ...(expiresAt ? { expiresAt } : {}),
             keyIdentifierInKMS: keyId,
             userId: user.id,
           },
@@ -764,5 +790,168 @@ export const kmsRouter = createTRPCRouter({
         successfulShares: results.filter((r) => r.success).length,
         failedShares: results.filter((r) => !r.success).length,
       };
+    }),
+
+  // Rotate owner's DEKs from one KEK to another KEK
+  rotateDEKsToKey: protectedProcedure
+    .input(
+      z.object({
+        fromKeyId: z.string(),
+        toKeyId: z.string(),
+        makePrimary: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { fromKeyId, toKeyId, makePrimary } = input;
+
+      if (fromKeyId === toKeyId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Source and target keys must be different",
+        });
+      }
+
+      try {
+        // Verify keys belong to the user
+        const [fromKey, toKey] = await Promise.all([
+          ctx.db.userKey.findFirst({
+            where: { id: fromKeyId, userId: user.id },
+          }),
+          ctx.db.userKey.findFirst({ where: { id: toKeyId, userId: user.id } }),
+        ]);
+
+        if (!fromKey || !toKey) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "One or both keys were not found",
+          });
+        }
+
+        // Fetch all owner's encrypted DEKs that currently use fromKey
+        const encryptedDeks = await ctx.db.encryptedDEK.findMany({
+          where: {
+            kekIdUsed: fromKeyId,
+            file: {
+              ownerId: user.id,
+              deletedAt: null,
+            },
+          },
+          select: {
+            id: true,
+            fileId: true,
+            dekCiphertext: true,
+            iv: true,
+          },
+        });
+
+        let successCount = 0;
+        const failures: { fileId: string; error: string }[] = [];
+
+        for (const enc of encryptedDeks) {
+          try {
+            // Decrypt with fromKey
+            const decryptCmd = new DecryptCommand({
+              CiphertextBlob: Buffer.from(enc.dekCiphertext),
+              KeyId: fromKey.keyIdentifierInKMS,
+            });
+            const decryptResp = await client.send(decryptCmd);
+            if (!decryptResp.Plaintext) {
+              throw new Error("KMS did not return plaintext");
+            }
+
+            // Re-encrypt with toKey
+            const encryptCmd = new EncryptCommand({
+              KeyId: toKey.keyIdentifierInKMS,
+              Plaintext: Buffer.from(decryptResp.Plaintext),
+            });
+            const encryptResp = await client.send(encryptCmd);
+            if (!encryptResp.CiphertextBlob) {
+              throw new Error("KMS did not return ciphertext");
+            }
+
+            const newCipher = Buffer.from(encryptResp.CiphertextBlob);
+
+            // Upsert recipient encrypted DEK for the same file under toKey
+            await ctx.db.encryptedDEK.upsert({
+              where: {
+                fileId_kekIdUsed: { fileId: enc.fileId, kekIdUsed: toKey.id },
+              },
+              update: {
+                dekCiphertext: newCipher,
+                iv: enc.iv,
+              },
+              create: {
+                fileId: enc.fileId,
+                kekIdUsed: toKey.id,
+                dekCiphertext: newCipher,
+                iv: enc.iv,
+              },
+            });
+
+            // Remove old encrypted DEK under fromKey
+            await ctx.db.encryptedDEK.delete({ where: { id: enc.id } });
+
+            successCount += 1;
+          } catch (error) {
+            failures.push({
+              fileId: enc.fileId,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+        }
+
+        // Optionally make target key primary
+        if (makePrimary) {
+          await ctx.db.$transaction([
+            ctx.db.userKey.updateMany({
+              where: { userId: user.id, isPrimary: true },
+              data: { isPrimary: false },
+            }),
+            ctx.db.userKey.update({
+              where: { id: toKey.id },
+              data: { isPrimary: true },
+            }),
+          ]);
+        }
+
+        // Mark rotation on fromKey
+        await ctx.db.userKey.update({
+          where: { id: fromKey.id },
+          data: { rotatedAt: new Date() },
+        });
+
+        // Audit log
+        await ctx.db.auditLog.create({
+          data: {
+            action: AuditAction.USER_KEY_ROTATED,
+            targetType: "UserKey",
+            targetId: fromKey.id,
+            actorId: user.id,
+            details: {
+              fromKeyId,
+              toKeyId,
+              rewrappedCount: successCount,
+              failureCount: failures.length,
+            },
+          },
+        });
+
+        return {
+          totalToRewrap: encryptedDeks.length,
+          rewrapped: successCount,
+          failed: failures.length,
+          failures,
+        };
+      } catch (error) {
+        console.error("Error rotating DEKs:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to rotate keys. Please try again.",
+        });
+      }
     }),
 });
