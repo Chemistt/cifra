@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -14,19 +14,14 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { useTRPC } from "@/trpc/react";
 
-type Tag = {
-  value: string;
-  label: string;
-};
-
-type FileAddTagProps = {
+type FileTagDialogProps = {
   itemId: string;
   itemType: "file" | "folder";
   open?: boolean;
@@ -37,21 +32,35 @@ const TAG_SCHEMA = z.object({
   tag: z.string().min(1, "Tag cannot be empty").max(32, "Tag too long"),
 });
 
-function FileAddTag({
+function FileTagDialog({
   itemId,
   itemType,
   open = false,
   onOpenChange,
-}: FileAddTagProps) {
-  const [selected, setSelected] = React.useState<Tag[]>([]);
+}: FileTagDialogProps) {
   const [internalOpen, setInternalOpen] = React.useState(open);
   const queryClient = useQueryClient();
   const trpc = useTRPC();
 
   // Sync internal open state with prop
   React.useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     setInternalOpen(open);
   }, [open]);
+
+  // Fetch existing tags for the item
+  const { data: fileData } = useQuery({
+    ...trpc.files.getFileMetadata.queryOptions({ fileId: itemId }),
+    enabled: !!itemId && itemType === "file" && open,
+  });
+
+  const { data: folderData } = useQuery({
+    ...trpc.files.getFolderMetadata.queryOptions({ folderId: itemId }),
+    enabled: !!itemId && itemType === "folder" && open,
+  });
+
+  const existingTags =
+    itemType === "file" ? (fileData?.tags ?? []) : (folderData?.tags ?? []);
 
   const {
     register,
@@ -70,11 +79,46 @@ function FileAddTag({
         void queryClient.invalidateQueries({
           queryKey: trpc.files.getFolderContents.queryKey(),
         });
+        if (itemType === "file") {
+          void queryClient.invalidateQueries({
+            queryKey: trpc.files.getFileMetadata.queryKey({ fileId: itemId }),
+          });
+        } else {
+          void queryClient.invalidateQueries({
+            queryKey: trpc.files.getFolderMetadata.queryKey({
+              folderId: itemId,
+            }),
+          });
+        }
         reset();
-        handleClose();
       },
       onError: (error) => {
         toast.error("Failed to add tag", { description: error.message });
+      },
+    }),
+  );
+
+  const removeTagMutation = useMutation(
+    trpc.files.removeTagFromItem.mutationOptions({
+      onSuccess: () => {
+        toast.success("Tag removed successfully!");
+        void queryClient.invalidateQueries({
+          queryKey: trpc.files.getFolderContents.queryKey(),
+        });
+        if (itemType === "file") {
+          void queryClient.invalidateQueries({
+            queryKey: trpc.files.getFileMetadata.queryKey({ fileId: itemId }),
+          });
+        } else {
+          void queryClient.invalidateQueries({
+            queryKey: trpc.files.getFolderMetadata.queryKey({
+              folderId: itemId,
+            }),
+          });
+        }
+      },
+      onError: (error) => {
+        toast.error("Failed to remove tag", { description: error.message });
       },
     }),
   );
@@ -83,24 +127,24 @@ function FileAddTag({
     setInternalOpen(false);
     onOpenChange?.(false);
     reset();
-    setSelected([]);
   };
 
-  const handleUnselect = React.useCallback((tag: Tag) => {
-    setSelected((previous) => previous.filter((s) => s.value !== tag.value));
-  }, []);
+  const handleRemoveTag = (tagId: string) => {
+    removeTagMutation.mutate({
+      itemId,
+      itemType,
+      tagId,
+    });
+  };
 
   const onSubmit = (data: { tag: string }) => {
     const trimmed = data.tag.trim();
     if (
       trimmed &&
-      !selected.some((c) => c.label.toLowerCase() === trimmed.toLowerCase())
+      !existingTags.some(
+        (tag) => tag.name.toLowerCase() === trimmed.toLowerCase(),
+      )
     ) {
-      const newTag = {
-        value: trimmed.toLowerCase().replaceAll(/\s+/g, "-"),
-        label: trimmed,
-      };
-      setSelected((previous) => [...previous, newTag]);
       addTagMutation.mutate({
         itemId,
         itemType,
@@ -111,62 +155,86 @@ function FileAddTag({
 
   return (
     <Dialog open={internalOpen} onOpenChange={handleClose}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add a Tag</DialogTitle>
+          <DialogTitle>Manage Tags</DialogTitle>
         </DialogHeader>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSubmit(onSubmit)();
-          }}
-          className="flex flex-col gap-4"
-          autoComplete="off"
-        >
-          <div className="flex flex-wrap gap-1">
-            {selected.map((tag) => (
-              <Badge
-                key={tag.value}
-                variant="secondary"
-                className="select-none"
-              >
-                {tag.label}
-                <X
-                  className="text-muted-foreground hover:text-foreground ml-2 size-3 cursor-pointer"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    handleUnselect(tag);
-                  }}
-                />
-              </Badge>
-            ))}
-          </div>
-          <Input
-            {...register("tag")}
-            placeholder="Type a tag and press Enter"
-            disabled={isSubmitting}
-            autoFocus
-          />
-          {errors.tag && (
-            <span className="text-xs text-red-500">{errors.tag.message}</span>
+
+        <div className="space-y-4">
+          {/* Existing Tags */}
+          {existingTags.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium">Current Tags</h4>
+              <div className="flex flex-wrap gap-2">
+                {existingTags.map((tag) => (
+                  <Badge
+                    key={tag.id}
+                    variant="secondary"
+                    className="flex items-center gap-1 pr-1"
+                  >
+                    {tag.name}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto p-0.5 hover:bg-transparent"
+                      onClick={() => {
+                        handleRemoveTag(tag.id);
+                      }}
+                      disabled={removeTagMutation.isPending}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
           )}
-          <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
-              Add Tag
-            </Button>
-            <DialogClose asChild>
-              <Button type="button" variant="ghost">
-                Cancel
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </form>
+
+          {existingTags.length > 0 && <Separator />}
+
+          {/* Add New Tag */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium">Add New Tag</h4>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSubmit(onSubmit)();
+              }}
+              className="space-y-3"
+              autoComplete="off"
+            >
+              <Input
+                {...register("tag")}
+                placeholder="Type a tag name and press Enter"
+                disabled={isSubmitting || addTagMutation.isPending}
+                autoFocus
+              />
+              {errors.tag && (
+                <span className="text-xs text-red-500">
+                  {errors.tag.message}
+                </span>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || addTagMutation.isPending}
+                  className="flex-1"
+                >
+                  Add Tag
+                </Button>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" className="flex-1">
+                    Done
+                  </Button>
+                </DialogClose>
+              </div>
+            </form>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-export { FileAddTag };
-export type { FileAddTagProps };
+export { FileTagDialog };
+export type { FileTagDialogProps };
