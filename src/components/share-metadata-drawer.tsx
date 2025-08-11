@@ -4,7 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import {
   CalendarIcon,
+  ChevronRightIcon,
   DownloadIcon,
+  FolderIcon,
+  HomeIcon,
   InfoIcon,
   PlusIcon,
   ShareIcon,
@@ -70,14 +73,35 @@ function AddFilesDialog({
   onShareUpdated: () => void;
 }) {
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
+  const [breadcrumbs, setBreadcrumbs] = useState<
+    { id: string | undefined; name: string }[]
+  >([{ id: undefined, name: "My Files" }]);
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const { data: userFiles } = useQuery(
+  const { data: folderContents } = useQuery(
     trpc.files.getFolderContents.queryOptions({
-      folderId: undefined, // Root folder
+      folderId: currentFolderId,
     }),
   );
+
+  // Navigation functions
+  const navigateToFolder = (folder: { id: string; name: string }) => {
+    setCurrentFolderId(folder.id);
+    setBreadcrumbs((previous) => [...previous, folder]);
+  };
+
+  const navigateToBreadcrumb = (index: number) => {
+    const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
+    setBreadcrumbs(newBreadcrumbs);
+    const targetFolder = newBreadcrumbs.at(-1);
+    setCurrentFolderId(targetFolder?.id);
+  };
+
+  // Filter files to only show encrypted files (shareable files)
+  const shareableFiles =
+    folderContents?.files.filter((file) => file.encryptedDeks.length > 0) ?? [];
 
   const addFilesMutation = useMutation(
     trpc.sharing.addFilesToShare.mutationOptions({
@@ -90,7 +114,10 @@ function AddFilesDialog({
         void queryClient.invalidateQueries({
           queryKey: trpc.sharing.getSharedWithMe.queryKey(),
         });
+        // Reset dialog state
         setSelectedFileIds([]);
+        setCurrentFolderId(undefined);
+        setBreadcrumbs([{ id: undefined, name: "My Files" }]);
         onOpenChange(false);
         // Close the main drawer to show fresh data when reopened
         onShareUpdated();
@@ -115,23 +142,75 @@ function AddFilesDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add Files to Share</DialogTitle>
           <DialogDescription>
-            Select files to add to this share. Only encrypted files can be
-            shared.
+            Browse your folders and select files to add to this share.
           </DialogDescription>
         </DialogHeader>
 
+        {/* Breadcrumb Navigation */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {breadcrumbs.map((breadcrumb, index) => (
+            <div
+              key={breadcrumb.id ?? `breadcrumb-${String(index)}`}
+              className="flex items-center"
+            >
+              {index > 0 && (
+                <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  navigateToBreadcrumb(index);
+                }}
+                className={`rounded px-2 py-1 text-sm whitespace-nowrap transition-colors ${
+                  index === breadcrumbs.length - 1
+                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {index === 0 ? (
+                  <div className="flex items-center gap-1">
+                    <HomeIcon className="h-3 w-3" />
+                    {breadcrumb.name}
+                  </div>
+                ) : (
+                  breadcrumb.name
+                )}
+              </button>
+            </div>
+          ))}
+        </div>
+
         <div className="max-h-64 space-y-2 overflow-y-auto">
-          {userFiles?.files.map((file) => (
+          {/* Folders */}
+          {folderContents?.folders.map((folder) => (
+            <div
+              key={folder.id}
+              className="hover:bg-muted flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
+              onClick={() => {
+                navigateToFolder(folder);
+              }}
+            >
+              <FolderIcon className="h-5 w-5 text-blue-500" />
+              <div className="min-w-0 flex-1">
+                <h4 className="font-medium">{folder.name}</h4>
+                <p className="text-muted-foreground text-sm">Folder</p>
+              </div>
+              <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+            </div>
+          ))}
+
+          {/* Files */}
+          {shareableFiles.map((file) => (
             <div
               key={file.id}
               className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors ${
                 selectedFileIds.includes(file.id)
-                  ? "border-blue-200 bg-blue-50"
-                  : "hover:bg-gray-50"
+                  ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
+                  : "hover:bg-muted"
               }`}
               onClick={() => {
                 setSelectedFileIds((previous) =>
@@ -158,17 +237,30 @@ function AddFilesDialog({
               </div>
             </div>
           ))}
-          {userFiles?.files.length === 0 && (
-            <p className="text-muted-foreground py-4 text-center text-sm">
-              No files available to add
-            </p>
-          )}
+
+          {shareableFiles.length === 0 &&
+            folderContents?.folders.length === 0 && (
+              <p className="text-muted-foreground py-4 text-center text-sm">
+                No encrypted files or folders available in this directory
+              </p>
+            )}
+
+          {shareableFiles.length === 0 &&
+            (folderContents?.folders.length ?? 0) > 0 && (
+              <p className="text-muted-foreground py-4 text-center text-sm">
+                No encrypted files in this folder. Navigate to subfolders to
+                find shareable files.
+              </p>
+            )}
         </div>
 
         <DialogFooter>
           <Button
             variant="outline"
             onClick={() => {
+              setSelectedFileIds([]);
+              setCurrentFolderId(undefined);
+              setBreadcrumbs([{ id: undefined, name: "My Files" }]);
               onOpenChange(false);
             }}
           >
@@ -181,6 +273,8 @@ function AddFilesDialog({
             }
           >
             {addFilesMutation.isPending ? "Adding..." : "Add Files"}
+            {selectedFileIds.length > 0 &&
+              ` (${String(selectedFileIds.length)})`}
           </Button>
         </DialogFooter>
       </DialogContent>
