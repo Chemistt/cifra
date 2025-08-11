@@ -212,10 +212,15 @@ export function FileSharingDialog({
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center gap-2 text-sm"
+                    className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-sm"
                   >
-                    <span className="truncate">{file.name}</span>
-                    <Badge variant="secondary" className="text-xs">
+                    <span className="truncate" title={file.name}>
+                      {file.name}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="justify-self-end text-xs"
+                    >
                       {file.mimeType}
                     </Badge>
                   </div>

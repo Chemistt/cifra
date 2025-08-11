@@ -420,15 +420,17 @@ function ListView({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <h4 className="font-medium">{folder.name}</h4>
+              <h4 className="truncate font-medium">{folder.name}</h4>
               {"path" in folder && folder.path.length > 0 && (
                 <p className="text-muted-foreground text-xs italic">
                   📁 {formatPathDisplay(folder.path)}
                 </p>
               )}
             </div>
-            <div className="text-muted-foreground flex items-center gap-4 text-sm">
-              <span>{formatDate(folder.updatedAt)}</span>
+            <div className="text-muted-foreground flex shrink-0 items-center gap-4 text-sm">
+              <span className="hidden sm:inline">
+                {formatDate(folder.updatedAt)}
+              </span>
               <span>Folder</span>
             </div>
             {folder.tags.length > 0 && (
@@ -462,15 +464,17 @@ function ListView({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <h4 className="font-medium">{file.name}</h4>
+              <h4 className="truncate font-medium">{file.name}</h4>
               {"path" in file && file.path.length > 0 && (
                 <p className="text-muted-foreground text-xs italic">
                   📁 {formatPathDisplay(file.path)}
                 </p>
               )}
             </div>
-            <div className="text-muted-foreground flex items-center gap-4 text-sm">
-              <span>{formatDate(file.updatedAt)}</span>
+            <div className="text-muted-foreground flex shrink-0 items-center gap-4 text-sm">
+              <span className="hidden sm:inline">
+                {formatDate(file.updatedAt)}
+              </span>
               <span>{formatFileSize(file.size)}</span>
             </div>
             {file.tags.length > 0 && (

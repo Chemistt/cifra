@@ -7,6 +7,7 @@ import {
   DownloadIcon,
   InfoIcon,
   KeyIcon,
+  MoreVerticalIcon,
   ShareIcon,
   UserIcon,
 } from "lucide-react";
@@ -19,6 +20,12 @@ import { ShareMetadataDrawer } from "@/components/share-metadata-drawer";
 import { SharePasswordManagementDialog } from "@/components/share-password-management-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate, formatFileSize, getFileIcon } from "@/lib/utils";
 import type { AppRouter } from "@/server/api/root";
@@ -243,26 +250,32 @@ function MyShareCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={onViewDetails}>
-              <InfoIcon className="mr-2 h-4 w-4" />
-              Details
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onManagePassword}
-              title={share.passwordHash ? "Manage password" : "Set password"}
-            >
-              <KeyIcon className="mr-2 h-4 w-4" />
-              {share.passwordHash ? "Password" : "Set Password"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleCopyLink()}
-            >
-              Copy Link
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreVerticalIcon className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onViewDetails}>
+                  <InfoIcon className="mr-2 h-4 w-4" />
+                  Details
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onManagePassword}
+                  title={
+                    share.passwordHash ? "Manage password" : "Set password"
+                  }
+                >
+                  <KeyIcon className="mr-2 h-4 w-4" />
+                  {share.passwordHash ? "Password" : "Set Password"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleCopyLink()}>
+                  <ShareIcon className="mr-2 h-4 w-4" />
+                  Copy Link
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </CardHeader>
