@@ -91,7 +91,7 @@ export function GlobalDropzone({ folderId, children }: GlobalDropzoneProps) {
       <EncryptedFileUploadDialog
         folderId={folderId}
         preloadedFiles={droppedFiles}
-        autoStartUpload={true}
+        autoStartUpload
         onUploadComplete={handleUploadComplete}
       />
     </>

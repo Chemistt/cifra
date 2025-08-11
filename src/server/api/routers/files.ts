@@ -976,6 +976,58 @@ export const filesRouter = createTRPCRouter({
         fileExtension: file.name.split(".").pop()?.toLowerCase() ?? "",
       };
     }),
+  getFolderMetadata: protectedProcedure
+    .input(
+      z.object({
+        folderId: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { folderId } = input;
+
+      // Fetch comprehensive folder metadata
+      const folder = await ctx.db.folder.findFirst({
+        where: {
+          id: folderId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          tags: {
+            include: {
+              tag: true,
+            },
+          },
+        },
+      });
+
+      if (!folder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Folder not found or you don't have permission to view it",
+        });
+      }
+
+      return {
+        id: folder.id,
+        name: folder.name,
+        passwordProtected: !!folder.passwordHash,
+        createdAt: folder.createdAt,
+        updatedAt: folder.updatedAt,
+        deletedAt: folder.deletedAt,
+        owner: folder.owner,
+        tags: folder.tags.map((tagRelation) => tagRelation.tag),
+      };
+    }),
   getUserTags: protectedProcedure
     .output(z.array(UserTagSchema))
     .query(async ({ ctx }) => {
@@ -1060,6 +1112,61 @@ export const filesRouter = createTRPCRouter({
               assignedBy: userId,
             },
           }));
+      return { success: true };
+    }),
+  removeTagFromItem: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.string(),
+        itemType: z.union([z.literal("file"), z.literal("folder")]),
+        tagId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { itemId, itemType, tagId } = input;
+      const userId = ctx.session.user.id;
+
+      // Verify the tag belongs to the user
+      const userTag = await ctx.db.userTags.findFirst({
+        where: {
+          id: tagId,
+          ownerId: userId,
+        },
+      });
+
+      if (!userTag) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tag not found or you don't have permission to remove it",
+        });
+      }
+
+      // Remove the tag association from the file or folder
+      try {
+        await (itemType === "file"
+          ? ctx.db.fileTag.delete({
+              where: {
+                fileId_tagId: {
+                  fileId: itemId,
+                  tagId: tagId,
+                },
+              },
+            })
+          : ctx.db.folderTag.delete({
+              where: {
+                folderId_tagId: {
+                  folderId: itemId,
+                  tagId: tagId,
+                },
+              },
+            }));
+      } catch {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Tag association not found",
+        });
+      }
+
       return { success: true };
     }),
   renameFolder: protectedProcedure

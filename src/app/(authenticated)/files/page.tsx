@@ -25,7 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-dialog";
-import { FileAddTag } from "@/components/file-add-tag";
+import { FileTagDialog } from "@/components/file-add-tag";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
 import { FilePasswordDialog } from "@/components/file-password-dialog";
@@ -200,7 +200,7 @@ function FileActionsContextMenu({
           }}
         >
           <TagIcon className="mr-2 h-4 w-4" />
-          Add Tag
+          Manage Tags
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => {
@@ -249,7 +249,7 @@ function FolderActionsContextMenu({
           }}
         >
           <TagIcon className="mr-2 h-4 w-4" />
-          Add Tag
+          Manage Tags
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => {
@@ -1065,7 +1065,7 @@ export default function FilesPage() {
         )}
 
         {showTagDialog && (
-          <FileAddTag
+          <FileTagDialog
             itemId={showTagDialog.id}
             itemType={showTagDialog.type}
             open={!!showTagDialog}
