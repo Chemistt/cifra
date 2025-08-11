@@ -308,7 +308,15 @@ export const sharingRouter = createTRPCRouter({
         where: {
           ownerId: user.id,
         },
-        include: {
+        select: {
+          id: true,
+          linkToken: true,
+          passwordHash: true,
+          maxDownloads: true,
+          downloadCount: true,
+          createdAt: true,
+          expiresAt: true,
+          ownerId: true,
           sharedFiles: {
             include: {
               file: {
@@ -356,14 +364,14 @@ export const sharingRouter = createTRPCRouter({
       const { user } = ctx.session;
       const { limit = 50, offset = 0 } = input ?? {};
 
-      const shareGroups = await ctx.db.shareGroup.findMany({
+      const allShareGroups = await ctx.db.shareGroup.findMany({
         where: {
           sharedUsers: {
             some: {
               id: user.id,
             },
           },
-          // Only include non-expired shares
+          // Check if not expired
           OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         },
         include: {
@@ -393,11 +401,22 @@ export const sharingRouter = createTRPCRouter({
         orderBy: {
           createdAt: "desc",
         },
-        take: limit,
-        skip: offset,
       });
 
-      return shareGroups;
+      // Filter out shares that have exceeded their download limits
+      const shareGroups = allShareGroups.filter((shareGroup) => {
+        // If maxDownloads is null, it means unlimited downloads
+        if (shareGroup.maxDownloads === null) {
+          return true;
+        }
+        // Otherwise, check if download count is less than max downloads
+        return shareGroup.downloadCount < shareGroup.maxDownloads;
+      });
+
+      // Apply pagination after filtering
+      const paginatedShares = shareGroups.slice(offset, offset + limit);
+
+      return paginatedShares;
     }),
 
   // Get share group details by link token
@@ -1111,6 +1130,66 @@ export const sharingRouter = createTRPCRouter({
       return { success: true };
     }),
 
+  // Validate download limits before allowing download
+  validateDownload: protectedProcedure
+    .input(
+      z.object({
+        linkToken: z.string(),
+        fileId: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { linkToken, fileId } = input;
+
+      // Get share group with current download count
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          linkToken,
+          // Check if not expired
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        include: {
+          sharedFiles: {
+            where: {
+              fileId,
+            },
+          },
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or expired",
+        });
+      }
+
+      // Check if file is in this share
+      if (shareGroup.sharedFiles.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found in this share",
+        });
+      }
+
+      // Check download limit
+      if (
+        shareGroup.maxDownloads &&
+        shareGroup.downloadCount >= shareGroup.maxDownloads
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Download limit exceeded",
+        });
+      }
+
+      return {
+        success: true,
+        downloadCount: shareGroup.downloadCount,
+        maxDownloads: shareGroup.maxDownloads,
+      };
+    }),
+
   trackDownload: protectedProcedure
     .input(
       z.object({
@@ -1144,6 +1223,337 @@ export const sharingRouter = createTRPCRouter({
             downloadType: "file",
           },
           actorId: ctx.session.user.id,
+        },
+      });
+
+      return { success: true };
+    }),
+
+  // Get share group password info for file downloads
+  getShareGroupInfo: protectedProcedure
+    .input(
+      z.object({
+        linkToken: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const { linkToken } = input;
+
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          linkToken,
+          // Check if not expired
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        select: {
+          id: true,
+          passwordHash: true,
+          ownerId: true,
+          sharedUsers: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or expired",
+        });
+      }
+
+      // Check if user has access (is owner or in shared users)
+      const hasAccess =
+        shareGroup.ownerId === ctx.session.user.id ||
+        shareGroup.sharedUsers.some((u) => u.id === ctx.session.user.id);
+
+      if (!hasAccess) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this share",
+        });
+      }
+
+      return {
+        hasPassword: Boolean(shareGroup.passwordHash),
+      };
+    }),
+
+  // Verify share group password
+  verifyShareGroupPassword: protectedProcedure
+    .input(
+      z.object({
+        linkToken: z.string(),
+        password: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { linkToken, password } = input;
+
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          linkToken,
+          // Check if not expired
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        select: {
+          id: true,
+          passwordHash: true,
+          ownerId: true,
+          sharedUsers: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or expired",
+        });
+      }
+
+      // Check if user has access (is owner or in shared users)
+      const hasAccess =
+        shareGroup.ownerId === ctx.session.user.id ||
+        shareGroup.sharedUsers.some((u) => u.id === ctx.session.user.id);
+
+      if (!hasAccess) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You don't have access to this share",
+        });
+      }
+
+      // Check password if required
+      if (!shareGroup.passwordHash) {
+        return { valid: true };
+      }
+
+      const bcrypt = await import("bcryptjs");
+      const isValidPassword = await bcrypt.compare(
+        password,
+        shareGroup.passwordHash,
+      );
+
+      return { valid: isValidPassword };
+    }),
+
+  // Set password on an existing share group
+  setShareGroupPassword: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        password: z.string().min(1, "Password is required"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, password } = input;
+
+      // Verify ownership of the share group
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          id: shareGroupId,
+          ownerId: user.id,
+        },
+        select: {
+          id: true,
+          passwordHash: true,
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or you don't have permission",
+        });
+      }
+
+      if (shareGroup.passwordHash) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Share group already has a password. Use changeShareGroupPassword instead.",
+        });
+      }
+
+      // Hash the new password
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      // Update the share group with the new password
+      await ctx.db.shareGroup.update({
+        where: { id: shareGroupId },
+        data: { passwordHash },
+      });
+
+      // Log audit event
+      await ctx.db.auditLog.create({
+        data: {
+          action: "FILE_SHARE",
+          targetType: "ShareGroup",
+          targetId: shareGroupId,
+          details: {
+            action: "password_set",
+          },
+          actorId: user.id,
+        },
+      });
+
+      return { success: true };
+    }),
+
+  // Change password on an existing share group
+  changeShareGroupPassword: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        currentPassword: z.string().min(1, "Current password is required"),
+        newPassword: z.string().min(1, "New password is required"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, currentPassword, newPassword } = input;
+
+      // Verify ownership of the share group
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          id: shareGroupId,
+          ownerId: user.id,
+        },
+        select: {
+          id: true,
+          passwordHash: true,
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or you don't have permission",
+        });
+      }
+
+      if (!shareGroup.passwordHash) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No password set on this share group",
+        });
+      }
+
+      // Verify current password
+      const bcrypt = await import("bcryptjs");
+      const isValidPassword = await bcrypt.compare(
+        currentPassword,
+        shareGroup.passwordHash,
+      );
+
+      if (!isValidPassword) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Incorrect current password",
+        });
+      }
+
+      // Hash the new password
+      const newPasswordHash = await bcrypt.hash(newPassword, 12);
+
+      // Update the share group with the new password
+      await ctx.db.shareGroup.update({
+        where: { id: shareGroupId },
+        data: { passwordHash: newPasswordHash },
+      });
+
+      // Log audit event
+      await ctx.db.auditLog.create({
+        data: {
+          action: "FILE_SHARE",
+          targetType: "ShareGroup",
+          targetId: shareGroupId,
+          details: {
+            action: "password_changed",
+          },
+          actorId: user.id,
+        },
+      });
+
+      return { success: true };
+    }),
+
+  // Remove password from an existing share group
+  removeShareGroupPassword: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        currentPassword: z.string().min(1, "Current password is required"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, currentPassword } = input;
+
+      // Verify ownership of the share group
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          id: shareGroupId,
+          ownerId: user.id,
+        },
+        select: {
+          id: true,
+          passwordHash: true,
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or you don't have permission",
+        });
+      }
+
+      if (!shareGroup.passwordHash) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No password set on this share group",
+        });
+      }
+
+      // Verify current password
+      const bcrypt = await import("bcryptjs");
+      const isValidPassword = await bcrypt.compare(
+        currentPassword,
+        shareGroup.passwordHash,
+      );
+
+      if (!isValidPassword) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Incorrect current password",
+        });
+      }
+
+      // Remove the password by setting it to null
+      await ctx.db.shareGroup.update({
+        where: { id: shareGroupId },
+        data: { passwordHash: null },
+      });
+
+      // Log audit event
+      await ctx.db.auditLog.create({
+        data: {
+          action: "FILE_SHARE",
+          targetType: "ShareGroup",
+          targetId: shareGroupId,
+          details: {
+            action: "password_removed",
+          },
+          actorId: user.id,
         },
       });
 

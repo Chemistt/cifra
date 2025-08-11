@@ -35,7 +35,11 @@ type EncryptedFileDownloadProps = {
   onDownloadStartAction?: () => void;
 };
 
-type DownloadState = "idle" | "waiting-for-password" | "downloading";
+type DownloadState =
+  | "idle"
+  | "waiting-for-sharegroup-password"
+  | "waiting-for-file-password"
+  | "downloading";
 
 export function EncryptedFileDownload({
   file,
@@ -47,6 +51,9 @@ export function EncryptedFileDownload({
 }: EncryptedFileDownloadProps) {
   const [downloadState, setDownloadState] = useState<DownloadState>("idle");
   const [hasAutoTriggered, setHasAutoTriggered] = useState(false);
+  const [shareGroupPasswordVerified, setShareGroupPasswordVerified] =
+    useState(false);
+  const [filePasswordVerified, setFilePasswordVerified] = useState(false);
   const trpc = useTRPC();
 
   const { data: encryptionDetails } = useQuery(
@@ -55,6 +62,14 @@ export function EncryptedFileDownload({
     }),
   );
 
+  // Get share group info if linkToken is provided
+  const { data: shareGroupInfo } = useQuery({
+    ...trpc.sharing.getShareGroupInfo.queryOptions({
+      linkToken: linkToken ?? "",
+    }),
+    enabled: Boolean(linkToken),
+  });
+
   // Decrypt DEK mutation
   const decryptDEKMutation = useMutation(
     trpc.kms.decryptDEK.mutationOptions({
@@ -62,6 +77,20 @@ export function EncryptedFileDownload({
         console.error("Error decrypting DEK:", error);
         toast.error("Failed to decrypt file key");
         setDownloadState("idle");
+      },
+    }),
+  );
+
+  // Validate download limits for shared files
+  const validateDownloadMutation = useMutation(
+    trpc.sharing.validateDownload.mutationOptions({
+      onError: (error) => {
+        if (error.data?.code === "FORBIDDEN") {
+          toast.error("Max downloads reached");
+        } else {
+          console.error("Error validating download:", error);
+          toast.error("Failed to validate download permissions");
+        }
       },
     }),
   );
@@ -83,10 +112,24 @@ export function EncryptedFileDownload({
     }
 
     try {
+      setDownloadState("downloading");
+
+      // Validate download limits for shared files before proceeding
+      if (linkToken) {
+        try {
+          await validateDownloadMutation.mutateAsync({
+            linkToken,
+            fileId: file.id,
+          });
+        } catch {
+          setDownloadState("idle");
+          return;
+        }
+      }
+
       toast.loading("Processing file...", {
         id: "processing-file",
       });
-      setDownloadState("downloading");
 
       // Signal that download is starting
       onDownloadStartAction?.();
@@ -150,28 +193,61 @@ export function EncryptedFileDownload({
     file.name,
     encryptionDetails,
     decryptDEKMutation,
+    validateDownloadMutation,
     trackDownloadMutation,
     linkToken,
     onDownloadStartAction,
   ]);
 
-  const initiateDownload = useCallback(() => {
-    const hasPassword = Boolean(file.passwordHash);
+  const checkPasswordRequirements = useCallback(() => {
+    const hasFilePassword = Boolean(file.passwordHash);
+    const hasShareGroupPassword = Boolean(shareGroupInfo?.hasPassword);
 
-    if (hasPassword) {
-      setDownloadState("waiting-for-password");
-    } else {
+    return {
+      needsShareGroupPassword:
+        linkToken && hasShareGroupPassword && !shareGroupPasswordVerified,
+      needsFilePassword: hasFilePassword && !filePasswordVerified,
+      canProceed:
+        (!linkToken || !hasShareGroupPassword || shareGroupPasswordVerified) &&
+        (!hasFilePassword || filePasswordVerified),
+    };
+  }, [
+    file.passwordHash,
+    shareGroupInfo?.hasPassword,
+    linkToken,
+    shareGroupPasswordVerified,
+    filePasswordVerified,
+  ]);
+
+  const initiateDownload = useCallback(() => {
+    const { needsShareGroupPassword, needsFilePassword, canProceed } =
+      checkPasswordRequirements();
+
+    if (needsShareGroupPassword) {
+      setDownloadState("waiting-for-sharegroup-password");
+    } else if (needsFilePassword) {
+      setDownloadState("waiting-for-file-password");
+    } else if (canProceed) {
       void performEncryptedDownload();
     }
-  }, [file.passwordHash, performEncryptedDownload]);
+  }, [checkPasswordRequirements, performEncryptedDownload]);
 
   const handleManualDownload = useCallback(() => {
     if (downloadState !== "idle") return;
     initiateDownload();
   }, [downloadState, initiateDownload]);
 
-  const handlePasswordVerified = useCallback(() => {
+  const handleShareGroupPasswordVerified = useCallback(() => {
+    setShareGroupPasswordVerified(true);
     setDownloadState("idle");
+    // After share group password is verified, check if file password is needed
+    initiateDownload();
+  }, [initiateDownload]);
+
+  const handleFilePasswordVerified = useCallback(() => {
+    setFilePasswordVerified(true);
+    setDownloadState("idle");
+    // After file password is verified, proceed with download
     void performEncryptedDownload();
   }, [performEncryptedDownload]);
 
@@ -190,7 +266,9 @@ export function EncryptedFileDownload({
       autoTrigger &&
       encryptionDetails &&
       downloadState === "idle" &&
-      !hasAutoTriggered
+      !hasAutoTriggered &&
+      // Only auto-trigger when share group info is loaded (if needed)
+      (!linkToken || shareGroupInfo !== undefined)
     ) {
       setHasAutoTriggered(true);
       initiateDownload();
@@ -200,6 +278,8 @@ export function EncryptedFileDownload({
     encryptionDetails,
     downloadState,
     hasAutoTriggered,
+    linkToken,
+    shareGroupInfo,
     initiateDownload,
   ]);
 
@@ -211,16 +291,35 @@ export function EncryptedFileDownload({
         </div>
       )}
 
+      {/* Share Group Password Dialog */}
+      {linkToken && (
+        <FileDownloadPasswordDialog
+          fileId={file.id}
+          fileName={file.name}
+          open={downloadState === "waiting-for-sharegroup-password"}
+          onOpenChange={(open) => {
+            if (!open) {
+              handlePasswordDialogClose();
+            }
+          }}
+          onPasswordVerified={handleShareGroupPasswordVerified}
+          linkToken={linkToken}
+          passwordType="shareGroup"
+        />
+      )}
+
+      {/* File Password Dialog */}
       <FileDownloadPasswordDialog
         fileId={file.id}
         fileName={file.name}
-        open={downloadState === "waiting-for-password"}
+        open={downloadState === "waiting-for-file-password"}
         onOpenChange={(open) => {
           if (!open) {
             handlePasswordDialogClose();
           }
         }}
-        onPasswordVerified={handlePasswordVerified}
+        onPasswordVerified={handleFilePasswordVerified}
+        passwordType="file"
       />
     </>
   );

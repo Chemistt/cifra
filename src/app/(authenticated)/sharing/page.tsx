@@ -6,6 +6,7 @@ import {
   CalendarIcon,
   DownloadIcon,
   InfoIcon,
+  KeyIcon,
   ShareIcon,
   UserIcon,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 import { EncryptedFileDownload } from "@/components/encrypted-file-download";
 import { LoadingView } from "@/components/loading-view";
 import { ShareMetadataDrawer } from "@/components/share-metadata-drawer";
+import { SharePasswordManagementDialog } from "@/components/share-password-management-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -123,10 +125,15 @@ function SharedGroupCard({ group }: { group: SharedGroup }) {
 function MySharesView() {
   const trpc = useTRPC();
   const [selectedShare, setSelectedShare] = useState<MyShare | undefined>();
+  const [passwordManagementShare, setPasswordManagementShare] = useState<
+    MyShare | undefined
+  >();
 
-  const { data: myShares, isLoading } = useQuery(
-    trpc.sharing.getMyShares.queryOptions(),
-  );
+  const {
+    data: myShares,
+    isLoading,
+    refetch,
+  } = useQuery(trpc.sharing.getMyShares.queryOptions());
 
   if (isLoading) {
     return <LoadingView />;
@@ -155,6 +162,9 @@ function MySharesView() {
               onViewDetails={() => {
                 setSelectedShare(share);
               }}
+              onManagePassword={() => {
+                setPasswordManagementShare(share);
+              }}
             />
           ))}
         </div>
@@ -167,6 +177,18 @@ function MySharesView() {
           if (!open) setSelectedShare(undefined);
         }}
       />
+
+      <SharePasswordManagementDialog
+        shareGroupId={passwordManagementShare?.id ?? ""}
+        hasPassword={Boolean(passwordManagementShare?.passwordHash)}
+        open={!!passwordManagementShare}
+        onOpenChange={(open) => {
+          if (!open) setPasswordManagementShare(undefined);
+        }}
+        onPasswordUpdated={() => {
+          void refetch();
+        }}
+      />
     </>
   );
 }
@@ -174,9 +196,11 @@ function MySharesView() {
 function MyShareCard({
   share,
   onViewDetails,
+  onManagePassword,
 }: {
   share: MyShare;
   onViewDetails: () => void;
+  onManagePassword: () => void;
 }) {
   const shareUrl = `${globalThis.location.origin}/sharing/${share.linkToken}`;
 
@@ -222,6 +246,15 @@ function MyShareCard({
             <Button variant="ghost" size="sm" onClick={onViewDetails}>
               <InfoIcon className="mr-2 h-4 w-4" />
               Details
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onManagePassword}
+              title={share.passwordHash ? "Manage password" : "Set password"}
+            >
+              <KeyIcon className="mr-2 h-4 w-4" />
+              {share.passwordHash ? "Password" : "Set Password"}
             </Button>
             <Button
               variant="outline"

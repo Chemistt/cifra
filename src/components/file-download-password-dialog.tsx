@@ -25,6 +25,8 @@ type FileDownloadPasswordDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPasswordVerified: () => void;
+  linkToken?: string;
+  passwordType?: "file" | "shareGroup";
 };
 
 export function FileDownloadPasswordDialog({
@@ -33,24 +35,46 @@ export function FileDownloadPasswordDialog({
   open,
   onOpenChange,
   onPasswordVerified,
+  linkToken,
+  passwordType = "file",
 }: FileDownloadPasswordDialogProps) {
   const [password, setPassword] = useState("");
   const trpc = useTRPC();
 
-  const verifyPasswordMutation = useMutation(
+  // File password verification
+  const verifyFilePasswordMutation = useMutation(
     trpc.files.verifyFilePassword.mutationOptions({
       onSuccess: (result) => {
         if (result.valid) {
-          toast.success("Password verified successfully");
+          toast.success("File password verified successfully");
           onPasswordVerified();
           setPassword("");
           onOpenChange(false);
         } else {
-          toast.error("Incorrect password");
+          toast.error("Incorrect file password");
         }
       },
       onError: (error) => {
-        toast.error(`Failed to verify password: ${error.message}`);
+        toast.error(`Failed to verify file password: ${error.message}`);
+      },
+    }),
+  );
+
+  // Share group password verification
+  const verifyShareGroupPasswordMutation = useMutation(
+    trpc.sharing.verifyShareGroupPassword.mutationOptions({
+      onSuccess: (result) => {
+        if (result.valid) {
+          toast.success("Share group password verified successfully");
+          onPasswordVerified();
+          setPassword("");
+          onOpenChange(false);
+        } else {
+          toast.error("Incorrect share group password");
+        }
+      },
+      onError: (error) => {
+        toast.error(`Failed to verify share group password: ${error.message}`);
       },
     }),
   );
@@ -62,11 +86,22 @@ export function FileDownloadPasswordDialog({
       return;
     }
 
-    verifyPasswordMutation.mutate({
-      fileId,
-      password,
-    });
+    if (passwordType === "shareGroup" && linkToken) {
+      verifyShareGroupPasswordMutation.mutate({
+        linkToken,
+        password,
+      });
+    } else {
+      verifyFilePasswordMutation.mutate({
+        fileId,
+        password,
+      });
+    }
   };
+
+  const isLoading =
+    verifyFilePasswordMutation.isPending ||
+    verifyShareGroupPasswordMutation.isPending;
 
   const handleCancel = () => {
     setPassword("");
@@ -82,13 +117,19 @@ export function FileDownloadPasswordDialog({
             Password Required
           </DialogTitle>
           <DialogDescription>
-            Please enter the password to download &quot;{fileName}&quot;
+            {passwordType === "shareGroup"
+              ? `Please enter the share group password to access "${fileName}"`
+              : `Please enter the file password to download "${fileName}"`}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">
+              {passwordType === "shareGroup"
+                ? "Share Group Password"
+                : "File Password"}
+            </Label>
             <Input
               id="password"
               type="password"
@@ -96,8 +137,12 @@ export function FileDownloadPasswordDialog({
               onChange={(event) => {
                 setPassword(event.target.value);
               }}
-              placeholder="Enter file password"
-              disabled={verifyPasswordMutation.isPending}
+              placeholder={
+                passwordType === "shareGroup"
+                  ? "Enter share group password"
+                  : "Enter file password"
+              }
+              disabled={isLoading}
               autoFocus
             />
           </div>
@@ -107,15 +152,12 @@ export function FileDownloadPasswordDialog({
               type="button"
               variant="outline"
               onClick={handleCancel}
-              disabled={verifyPasswordMutation.isPending}
+              disabled={isLoading}
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={verifyPasswordMutation.isPending || !password.trim()}
-            >
-              {verifyPasswordMutation.isPending ? "Verifying..." : "Verify"}
+            <Button type="submit" disabled={isLoading || !password.trim()}>
+              {isLoading ? "Verifying..." : "Verify"}
             </Button>
           </DialogFooter>
         </form>

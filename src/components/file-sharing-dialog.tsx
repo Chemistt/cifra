@@ -26,7 +26,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { formatDate } from "@/lib/utils";
 import { useTRPC } from "@/trpc/react";
 
 export type ShareableFile = {
@@ -201,32 +200,6 @@ export function FileSharingDialog({
                 >
                   <CopyIcon className="h-4 w-4" />
                 </Button>
-              </div>
-            </div>
-
-            <div className="rounded-md bg-blue-50 p-4">
-              <h4 className="mb-2 text-sm font-medium">Share Details</h4>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>Files:</span>
-                  <span>{files.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Recipients:</span>
-                  <span>{recipientEmails.length}</span>
-                </div>
-                {usePassword && (
-                  <div className="flex justify-between">
-                    <span>Password:</span>
-                    <span>Protected</span>
-                  </div>
-                )}
-                {expiresAt && (
-                  <div className="flex justify-between">
-                    <span>Expires:</span>
-                    <span>{formatDate(new Date(expiresAt))}</span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
