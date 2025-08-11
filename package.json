@@ -82,6 +82,7 @@
     "@iconify-icon/react": "^3.0.0",
     "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^22.16.5",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "babel-plugin-react-compiler": "19.1.0-rc.2",
