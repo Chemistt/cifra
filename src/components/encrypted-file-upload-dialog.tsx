@@ -125,14 +125,13 @@ export function EncryptedFileUploadDialog({
         return;
       }
 
-      // Check file sizes before proceeding (4MB limit from uploadthing config)
-      const maxFileSize = 4 * 1024 * 1024; // 4MB in bytes
+      const maxFileSize = 8 * 1024 * 1024;
       const oversizedFiles = files.filter((file) => file.size > maxFileSize);
 
       if (oversizedFiles.length > 0) {
         for (const file of oversizedFiles) {
           toast.error(
-            `File "${file.name}" exceeds the 4MB size limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`,
+            `File "${file.name}" exceeds the 8MB size limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`,
           );
         }
 
