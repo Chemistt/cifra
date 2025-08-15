@@ -200,7 +200,7 @@ export function EncryptedFileDownload({
   ]);
 
   const checkPasswordRequirements = useCallback(() => {
-    const hasFilePassword = Boolean(file.passwordHash);
+    const hasFilePassword = Boolean(file.passwordHash) && !linkToken;
     const hasShareGroupPassword = Boolean(shareGroupInfo?.hasPassword);
 
     return {
