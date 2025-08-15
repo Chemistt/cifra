@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "TwoFactor" ALTER COLUMN "backupCodes" DROP NOT NULL,
+ALTER COLUMN "backupCodes" SET DATA TYPE TEXT;
