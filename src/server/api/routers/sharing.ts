@@ -1559,4 +1559,77 @@ export const sharingRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  // Reset password on an existing share group (requires TOTP)
+  resetShareGroupPassword: protectedProcedure
+    .input(
+      z.object({
+        shareGroupId: z.string(),
+        newPassword: z.string().min(1, "New password is required"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const { shareGroupId, newPassword } = input;
+
+      // Verify user has 2FA enabled (required for password reset)
+      if (!user.twoFactorEnabled) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Two-factor authentication must be enabled to reset share passwords",
+        });
+      }
+
+      // Verify ownership of the share group
+      const shareGroup = await ctx.db.shareGroup.findFirst({
+        where: {
+          id: shareGroupId,
+          ownerId: user.id,
+        },
+        select: {
+          id: true,
+          passwordHash: true,
+        },
+      });
+
+      if (!shareGroup) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Share not found or you don't have permission",
+        });
+      }
+
+      if (!shareGroup.passwordHash) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Share does not have a password set",
+        });
+      }
+
+      // Hash the new password
+      const bcrypt = await import("bcryptjs");
+      const newPasswordHash = await bcrypt.hash(newPassword, 12);
+
+      // Update the share group with the new password
+      await ctx.db.shareGroup.update({
+        where: { id: shareGroupId },
+        data: { passwordHash: newPasswordHash },
+      });
+
+      // Log audit event
+      await ctx.db.auditLog.create({
+        data: {
+          action: "FILE_SHARE",
+          targetType: "ShareGroup",
+          targetId: shareGroupId,
+          details: {
+            action: "password_reset",
+          },
+          actorId: user.id,
+        },
+      });
+
+      return { success: true };
+    }),
 });
