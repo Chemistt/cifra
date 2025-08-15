@@ -10,6 +10,7 @@ import {
   InfoIcon,
   KeyRoundIcon,
   LockIcon,
+  MoveIcon,
   PlusIcon,
   SearchIcon,
   ShareIcon,
@@ -28,6 +29,7 @@ import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-di
 import { FileTagDialog } from "@/components/file-add-tag";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
+import { FileMoveDialog } from "@/components/file-move-dialog";
 import { FilePasswordDialog } from "@/components/file-password-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
 import {
@@ -89,6 +91,7 @@ const formatPathDisplay = (path: string[]) => {
 
 type FileAction =
   | { type: "rename"; file: { id: string; name: string } }
+  | { type: "move"; file: { id: string; name: string } }
   | { type: "delete"; fileId: string }
   | { type: "metadata"; fileId: string }
   | { type: "changePassword"; fileId: string }
@@ -145,6 +148,17 @@ function FileActionsContextMenu({
         >
           <EditIcon className="mr-2 h-4 w-4" />
           Rename
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
+            onFileAction({
+              type: "move",
+              file: { id: file.id, name: file.name },
+            });
+          }}
+        >
+          <MoveIcon className="mr-2 h-4 w-4" />
+          Move
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => {
@@ -548,6 +562,9 @@ export default function FilesPage() {
   const [renameDialogFile, setRenameDialogFile] = useState<
     { id: string; name: string } | undefined
   >();
+  const [moveDialogFile, setMoveDialogFile] = useState<
+    { id: string; name: string } | undefined
+  >();
   const [metadataDrawerFileId, setMetadataDrawerFileId] = useState<
     string | undefined
   >();
@@ -629,6 +646,10 @@ export default function FilesPage() {
     switch (action.type) {
       case "rename": {
         setRenameDialogFile(action.file);
+        break;
+      }
+      case "move": {
+        setMoveDialogFile(action.file);
         break;
       }
       case "delete": {
@@ -1019,6 +1040,19 @@ export default function FilesPage() {
             open={!!renameDialogFile}
             onOpenChange={(isOpen) => {
               if (!isOpen) setRenameDialogFile(undefined);
+            }}
+          />
+        )}
+
+        {/* File Move Dialog */}
+        {moveDialogFile && (
+          <FileMoveDialog
+            fileId={moveDialogFile.id}
+            fileName={moveDialogFile.name}
+            currentFolderId={folderContents?.baseFolderId ?? ""}
+            open={!!moveDialogFile}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setMoveDialogFile(undefined);
             }}
           />
         )}

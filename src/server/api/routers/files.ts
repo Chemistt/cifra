@@ -1269,6 +1269,89 @@ export const filesRouter = createTRPCRouter({
 
       return deletedFolder;
     }),
+  moveFile: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        targetFolderId: z.string().optional(), // Optional to allow moving to root
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { fileId } = input;
+      let { targetFolderId } = input;
+
+      // If no targetFolderId provided, move to root folder
+      targetFolderId ??= await getRootFolder({
+        db: ctx.db,
+        ownerId: userId,
+      });
+
+      // First, verify the file belongs to the user and is not deleted
+      const existingFile = await ctx.db.file.findFirst({
+        where: {
+          id: fileId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!existingFile) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission to move it",
+        });
+      }
+
+      // Verify the target folder belongs to the user and is not deleted
+      const targetFolder = await ctx.db.folder.findFirst({
+        where: {
+          id: targetFolderId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!targetFolder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "Target folder not found or you don't have permission to access it",
+        });
+      }
+
+      // Check if a file with the same name already exists in the target folder
+      const existingFileInTarget = await ctx.db.file.findFirst({
+        where: {
+          name: existingFile.name,
+          folderId: targetFolderId,
+          ownerId: userId,
+          deletedAt: null,
+          NOT: { id: fileId }, // Exclude the file being moved
+        },
+      });
+
+      if (existingFileInTarget) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `A file named "${existingFile.name}" already exists in the target folder`,
+        });
+      }
+
+      // Move the file by updating its folderId
+      const movedFile = await ctx.db.file.update({
+        where: {
+          id: fileId,
+        },
+        data: {
+          folderId: targetFolderId,
+          updatedAt: new Date(),
+        },
+      });
+
+      return movedFile;
+    }),
 });
 
 // Helper function for file size formatting
