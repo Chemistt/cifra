@@ -125,6 +125,25 @@ export function EncryptedFileUploadDialog({
         return;
       }
 
+      // Check file sizes before proceeding (4MB limit from uploadthing config)
+      const maxFileSize = 4 * 1024 * 1024; // 4MB in bytes
+      const oversizedFiles = files.filter((file) => file.size > maxFileSize);
+
+      if (oversizedFiles.length > 0) {
+        for (const file of oversizedFiles) {
+          toast.error(
+            `File "${file.name}" exceeds the 4MB size limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`,
+          );
+        }
+
+        // Filter out oversized files and continue with valid ones
+        const validFiles = files.filter((file) => file.size <= maxFileSize);
+        if (validFiles.length === 0) {
+          return; // No valid files to upload
+        }
+        files = validFiles;
+      }
+
       isProcessingRef.current = true;
 
       const newUploads: UploadState[] = files.map((file) => ({
@@ -243,6 +262,8 @@ export function EncryptedFileUploadDialog({
     if (files.length > 0) {
       void handleFileUpload(files);
     }
+    // Reset the input value to allow selecting the same files again
+    event.target.value = "";
   };
 
   const removeUpload = (index: number) => {
