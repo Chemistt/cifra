@@ -3,6 +3,7 @@
 import { KeyIcon, LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { PasswordSignInDialog } from "@/components/password-sign-in-dialog";
 import { TotpVerificationDialog } from "@/components/totp-verification-dialog";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 const handleTotpError = (error: string) => {
   console.error("TOTP verification failed:", error);
+  toast.error("TOTP verification failed. Please try again.");
 };
 
 export default function SignIn() {
@@ -50,6 +52,7 @@ export default function SignIn() {
         },
         onError: (context) => {
           console.error("Social sign-in failed:", context.error);
+          toast.error("Sign in failed. Please try again.");
         },
       },
     );
@@ -70,6 +73,7 @@ export default function SignIn() {
         },
         onError: (context) => {
           console.error("Passkey sign-in failed:", context.error);
+          toast.error("Passkey sign in failed. Please try again.");
         },
       },
     });
