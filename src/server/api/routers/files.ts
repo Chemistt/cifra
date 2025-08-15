@@ -27,6 +27,11 @@ const REMOVE_PASSWORD_SCHEMA = z.object({
   currentPassword: z.string().min(1),
 });
 
+const RESET_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  newPassword: z.string().min(1, "New password is required"),
+});
+
 const UserTagSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -115,6 +120,51 @@ const removeFilePassword = protectedProcedure
     });
 
     return { success: true };
+  });
+
+const resetFilePassword = protectedProcedure
+  .input(RESET_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, newPassword } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    // Verify user has 2FA enabled (required for password reset)
+    if (!user.twoFactorEnabled) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message:
+          "Two-factor authentication must be enabled to reset file passwords",
+      });
+    }
+
+    // Verify file exists and user owns it
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { id: true, name: true, passwordHash: true },
+    });
+
+    if (!file) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "File not found" });
+    }
+
+    if (!file.passwordHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "File does not have a password set",
+      });
+    }
+
+    // Hash the new password
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    // Update the file with new password hash
+    await ctx.db.file.update({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      data: { passwordHash: newHash },
+    });
+
+    return { success: true, fileName: file.name };
   });
 
 const FolderFolderSchema = z.object({
@@ -847,6 +897,7 @@ export const filesRouter = createTRPCRouter({
   verifyFilePassword,
   changeFilePassword,
   removeFilePassword,
+  resetFilePassword,
 
   getFileMetadata: protectedProcedure
     .input(
