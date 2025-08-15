@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { TotpVerificationDialog } from "@/components/totp-verification-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,9 +29,18 @@ import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/auth-client";
 
 const passwordSignInSchema = z.object({
-  email: z.string().min(1, "Email is required").pipe(z.email("Please enter a valid email address")),
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .pipe(z.email("Please enter a valid email address")),
   password: z.string().min(1, "Password is required"),
 });
+
+const handleTotpError = (error: string) => {
+  // TOTP verification failed, but user is still in sign-in flow
+  // The user can try again with the TOTP dialog
+  console.error("TOTP verification failed:", error);
+};
 
 type PasswordSignInFormData = z.infer<typeof passwordSignInSchema>;
 
@@ -45,6 +55,7 @@ export function PasswordSignInDialog({
 }: PasswordSignInDialogProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showTotpDialog, setShowTotpDialog] = useState(false);
   const router = useRouter();
 
   const form = useForm<PasswordSignInFormData>({
@@ -71,21 +82,35 @@ export function PasswordSignInDialog({
     setIsLoading(true);
 
     try {
-      const result = await signIn.email({
-        email: data.email,
-        password: data.password,
-      });
+      const result = await signIn.email(
+        {
+          email: data.email,
+          password: data.password,
+        },
+        {
+          onSuccess(context) {
+            const data = context.data as { twoFactorRedirect?: boolean };
+            if (data.twoFactorRedirect) {
+              // User has 2FA enabled, show TOTP verification dialog
+              setShowTotpDialog(true);
+              return;
+            }
 
-      if (result.data) {
-        toast.success("Signed in successfully");
-        onOpenChange(false);
-        form.reset();
-        
-        // TODO: After implement TOTP, prompt for TOTP here before redirecting
-        // For now, redirect directly to files
-        router.push("/files");
-      } else {
-        toast.error("Invalid email or password");
+            // No 2FA required, sign in successful
+            toast.success("Signed in successfully");
+            onOpenChange(false);
+            form.reset();
+            router.push("/files");
+          },
+          onError: (context) => {
+            toast.error(context.error.message || "Invalid email or password");
+          },
+        },
+      );
+
+      // If there's an error in the result itself
+      if (result.error) {
+        toast.error(result.error.message ?? "Invalid email or password");
       }
     } catch {
       toast.error("Server error. Please try again later.");
@@ -94,103 +119,130 @@ export function PasswordSignInDialog({
     setIsLoading(false);
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <LockIcon className="h-5 w-5" />
-            Sign in with Password
-          </DialogTitle>
-          <DialogDescription>
-            Enter your email and password to sign in to your account.
-          </DialogDescription>
-        </DialogHeader>
+  const handleTotpSuccess = () => {
+    toast.success("Signed in successfully");
+    setShowTotpDialog(false);
+    onOpenChange(false);
+    form.reset();
+    router.push("/files");
+  };
 
-        <Form {...form}>
-          <form
-            onSubmit={(event) => {
-              void form.handleSubmit(onSubmit)(event);
-            }}
-            className="space-y-6"
-          >
-            <fieldset disabled={isLoading} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type="email"
-                        placeholder="Enter your email"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <div className="relative">
+  const handleTotpDialogChange = (open: boolean) => {
+    setShowTotpDialog(open);
+    // If the user closes the TOTP dialog, they need to sign in again
+    if (!open) {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LockIcon className="h-5 w-5" />
+              Sign in with Password
+            </DialogTitle>
+            <DialogDescription>
+              Enter your email and password to sign in to your account.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...form}>
+            <form
+              onSubmit={(event) => {
+                void form.handleSubmit(onSubmit)(event);
+              }}
+              className="space-y-6"
+            >
+              <fieldset disabled={isLoading} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
                         <Input
                           {...field}
-                          type={showPassword ? "text" : "password"}
-                          placeholder="Enter your password"
-                          className="pr-10"
+                          type="email"
+                          placeholder="Enter your email"
                         />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => {
-                            setShowPassword((previous) => !previous);
-                          }}
-                        >
-                          {showPassword ? (
-                            <EyeOffIcon className="h-4 w-4" />
-                          ) : (
-                            <EyeIcon className="h-4 w-4" />
-                          )}
-                          <span className="sr-only">
-                            {showPassword ? "Hide password" : "Show password"}
-                          </span>
-                        </Button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </fieldset>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            {...field}
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Enter your password"
+                            className="pr-10"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => {
+                              setShowPassword((previous) => !previous);
+                            }}
+                          >
+                            {showPassword ? (
+                              <EyeOffIcon className="h-4 w-4" />
+                            ) : (
+                              <EyeIcon className="h-4 w-4" />
+                            )}
+                            <span className="sr-only">
+                              {showPassword ? "Hide password" : "Show password"}
+                            </span>
+                          </Button>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </fieldset>
 
-            <div className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  onOpenChange(false);
-                }}
-                disabled={isLoading}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading} className="flex-1">
-                {isLoading ? "Signing in..." : "Sign in"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    onOpenChange(false);
+                  }}
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isLoading} className="flex-1">
+                  {isLoading ? "Signing in..." : "Sign in"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <TotpVerificationDialog
+        open={showTotpDialog}
+        onOpenChange={handleTotpDialogChange}
+        onSuccess={handleTotpSuccess}
+        onError={handleTotpError}
+        title="Complete Sign In"
+        description="Please enter your TOTP code to complete the sign-in process."
+      />
+    </>
   );
 }

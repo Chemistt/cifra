@@ -5,6 +5,7 @@ import { EyeIcon, EyeOffIcon, KeyIcon, LockIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { ShareResetPasswordDialog } from "@/components/share-reset-password-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -44,6 +45,7 @@ export function SharePasswordManagementDialog({
     current: false,
     confirm: false,
   });
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
   const trpc = useTRPC();
 
@@ -175,311 +177,367 @@ export function SharePasswordManagementDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyIcon className="h-5 w-5" />
-            Manage Share Password
-          </DialogTitle>
-          <DialogDescription>
-            {hasPassword
-              ? "Change or remove the password for this share group."
-              : "Set a password to add extra security to this share group."}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyIcon className="h-5 w-5" />
+              Manage Share Password
+            </DialogTitle>
+            <DialogDescription>
+              {hasPassword
+                ? "Change or remove the password for this share group."
+                : "Set a password to add extra security to this share group."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <Tabs defaultValue={hasPassword ? "change" : "set"} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="set" disabled={hasPassword}>
-              Set Password
-            </TabsTrigger>
-            <TabsTrigger value="change" disabled={!hasPassword}>
-              Change Password
-            </TabsTrigger>
-            <TabsTrigger value="remove" disabled={!hasPassword}>
-              Remove Password
-            </TabsTrigger>
-          </TabsList>
+          <Tabs
+            defaultValue={hasPassword ? "change" : "set"}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="set" disabled={hasPassword}>
+                Set
+              </TabsTrigger>
+              <TabsTrigger value="change" disabled={!hasPassword}>
+                Change
+              </TabsTrigger>
+              <TabsTrigger value="reset" disabled={!hasPassword}>
+                Reset
+              </TabsTrigger>
+              <TabsTrigger value="remove" disabled={!hasPassword}>
+                Remove
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="set" className="space-y-4">
-            <form onSubmit={handleSetPassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="new-password"
-                    type={showPasswords.new ? "text" : "password"}
-                    value={passwords.new}
-                    onChange={(event) => {
-                      setPasswords((previous) => ({
-                        ...previous,
-                        new: event.target.value,
-                      }));
-                    }}
-                    placeholder="Enter new password"
-                    className="pr-10"
-                  />
+            <TabsContent value="set" className="space-y-4">
+              <form onSubmit={handleSetPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="new-password"
+                      type={showPasswords.new ? "text" : "password"}
+                      value={passwords.new}
+                      onChange={(event) => {
+                        setPasswords((previous) => ({
+                          ...previous,
+                          new: event.target.value,
+                        }));
+                      }}
+                      placeholder="Enter new password"
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-0 right-0 h-full px-3"
+                      onClick={() => {
+                        togglePasswordVisibility("new");
+                      }}
+                    >
+                      {showPasswords.new ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">Confirm Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="confirm-password"
+                      type={showPasswords.confirm ? "text" : "password"}
+                      value={passwords.confirm}
+                      onChange={(event) => {
+                        setPasswords((previous) => ({
+                          ...previous,
+                          confirm: event.target.value,
+                        }));
+                      }}
+                      placeholder="Confirm new password"
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-0 right-0 h-full px-3"
+                      onClick={() => {
+                        togglePasswordVisibility("confirm");
+                      }}
+                    >
+                      {showPasswords.confirm ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <DialogFooter>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-0 right-0 h-full px-3"
-                    onClick={() => {
-                      togglePasswordVisibility("new");
-                    }}
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isLoading}
                   >
-                    {showPasswords.new ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                    Cancel
                   </Button>
-                </div>
-              </div>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? "Setting..." : "Set Password"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
-                <div className="relative">
-                  <Input
-                    id="confirm-password"
-                    type={showPasswords.confirm ? "text" : "password"}
-                    value={passwords.confirm}
-                    onChange={(event) => {
-                      setPasswords((previous) => ({
-                        ...previous,
-                        confirm: event.target.value,
-                      }));
-                    }}
-                    placeholder="Confirm new password"
-                    className="pr-10"
-                  />
+            <TabsContent value="change" className="space-y-4">
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="current-password">Current Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="current-password"
+                      type={showPasswords.current ? "text" : "password"}
+                      value={passwords.current}
+                      onChange={(event) => {
+                        setPasswords((previous) => ({
+                          ...previous,
+                          current: event.target.value,
+                        }));
+                      }}
+                      placeholder="Enter current password"
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-0 right-0 h-full px-3"
+                      onClick={() => {
+                        togglePasswordVisibility("current");
+                      }}
+                    >
+                      {showPasswords.current ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="new-password-change">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="new-password-change"
+                      type={showPasswords.new ? "text" : "password"}
+                      value={passwords.new}
+                      onChange={(event) => {
+                        setPasswords((previous) => ({
+                          ...previous,
+                          new: event.target.value,
+                        }));
+                      }}
+                      placeholder="Enter new password"
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-0 right-0 h-full px-3"
+                      onClick={() => {
+                        togglePasswordVisibility("new");
+                      }}
+                    >
+                      {showPasswords.new ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password-change">
+                    Confirm New Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="confirm-password-change"
+                      type={showPasswords.confirm ? "text" : "password"}
+                      value={passwords.confirm}
+                      onChange={(event) => {
+                        setPasswords((previous) => ({
+                          ...previous,
+                          confirm: event.target.value,
+                        }));
+                      }}
+                      placeholder="Confirm new password"
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-0 right-0 h-full px-3"
+                      onClick={() => {
+                        togglePasswordVisibility("confirm");
+                      }}
+                    >
+                      {showPasswords.confirm ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <DialogFooter>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-0 right-0 h-full px-3"
-                    onClick={() => {
-                      togglePasswordVisibility("confirm");
-                    }}
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isLoading}
                   >
-                    {showPasswords.confirm ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                    Cancel
                   </Button>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? "Changing..." : "Change Password"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="reset" className="space-y-4">
+              <div className="space-y-4">
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <KeyIcon className="h-4 w-4 text-blue-500" />
+                    <span className="font-medium">Reset Password</span>
+                  </div>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Reset your share password without needing to remember the
+                    current one. This requires two-factor authentication
+                    verification for security.
+                  </p>
                 </div>
-              </div>
 
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Setting..." : "Set Password"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </TabsContent>
-
-          <TabsContent value="change" className="space-y-4">
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Current Password</Label>
-                <div className="relative">
-                  <Input
-                    id="current-password"
-                    type={showPasswords.current ? "text" : "password"}
-                    value={passwords.current}
-                    onChange={(event) => {
-                      setPasswords((previous) => ({
-                        ...previous,
-                        current: event.target.value,
-                      }));
-                    }}
-                    placeholder="Enter current password"
-                    className="pr-10"
-                  />
+                <DialogFooter>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-0 right-0 h-full px-3"
-                    onClick={() => {
-                      togglePasswordVisibility("current");
-                    }}
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isLoading}
                   >
-                    {showPasswords.current ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                    Cancel
                   </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="new-password-change">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="new-password-change"
-                    type={showPasswords.new ? "text" : "password"}
-                    value={passwords.new}
-                    onChange={(event) => {
-                      setPasswords((previous) => ({
-                        ...previous,
-                        new: event.target.value,
-                      }));
-                    }}
-                    placeholder="Enter new password"
-                    className="pr-10"
-                  />
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-0 right-0 h-full px-3"
                     onClick={() => {
-                      togglePasswordVisibility("new");
+                      setShowResetDialog(true);
                     }}
+                    disabled={isLoading}
                   >
-                    {showPasswords.new ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                    Reset Password
                   </Button>
-                </div>
+                </DialogFooter>
               </div>
+            </TabsContent>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password-change">
-                  Confirm New Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="confirm-password-change"
-                    type={showPasswords.confirm ? "text" : "password"}
-                    value={passwords.confirm}
-                    onChange={(event) => {
-                      setPasswords((previous) => ({
-                        ...previous,
-                        confirm: event.target.value,
-                      }));
-                    }}
-                    placeholder="Confirm new password"
-                    className="pr-10"
-                  />
+            <TabsContent value="remove" className="space-y-4">
+              <form onSubmit={handleRemovePassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="current-password-remove">
+                    Current Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="current-password-remove"
+                      type={showPasswords.current ? "text" : "password"}
+                      value={passwords.current}
+                      onChange={(event) => {
+                        setPasswords((previous) => ({
+                          ...previous,
+                          current: event.target.value,
+                        }));
+                      }}
+                      placeholder="Enter current password"
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-0 right-0 h-full px-3"
+                      onClick={() => {
+                        togglePasswordVisibility("current");
+                      }}
+                    >
+                      {showPasswords.current ? (
+                        <EyeOffIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border-destructive/20 bg-destructive/10 rounded-lg border p-3">
+                  <div className="text-destructive flex items-center gap-2 text-sm">
+                    <LockIcon className="h-4 w-4" />
+                    <span className="font-medium">Warning</span>
+                  </div>
+                  <p className="text-destructive/80 mt-1 text-sm">
+                    Removing the password will make this share accessible
+                    without password verification.
+                  </p>
+                </div>
+
+                <DialogFooter>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-0 right-0 h-full px-3"
-                    onClick={() => {
-                      togglePasswordVisibility("confirm");
-                    }}
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={isLoading}
                   >
-                    {showPasswords.confirm ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                    Cancel
                   </Button>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Changing..." : "Change Password"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </TabsContent>
-
-          <TabsContent value="remove" className="space-y-4">
-            <form onSubmit={handleRemovePassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password-remove">
-                  Current Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="current-password-remove"
-                    type={showPasswords.current ? "text" : "password"}
-                    value={passwords.current}
-                    onChange={(event) => {
-                      setPasswords((previous) => ({
-                        ...previous,
-                        current: event.target.value,
-                      }));
-                    }}
-                    placeholder="Enter current password"
-                    className="pr-10"
-                  />
                   <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute top-0 right-0 h-full px-3"
-                    onClick={() => {
-                      togglePasswordVisibility("current");
-                    }}
+                    type="submit"
+                    variant="destructive"
+                    disabled={isLoading}
                   >
-                    {showPasswords.current ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                    {isLoading ? "Removing..." : "Remove Password"}
                   </Button>
-                </div>
-              </div>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
-              <div className="border-destructive/20 bg-destructive/10 rounded-lg border p-3">
-                <div className="text-destructive flex items-center gap-2 text-sm">
-                  <LockIcon className="h-4 w-4" />
-                  <span className="font-medium">Warning</span>
-                </div>
-                <p className="text-destructive/80 mt-1 text-sm">
-                  Removing the password will make this share accessible without
-                  password verification.
-                </p>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="destructive"
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Removing..." : "Remove Password"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+      {/* Reset Password Dialog */}
+      <ShareResetPasswordDialog
+        shareGroupId={shareGroupId}
+        open={showResetDialog}
+        onOpenChange={setShowResetDialog}
+        onPasswordUpdated={() => {
+          onPasswordUpdated?.();
+          setShowResetDialog(false);
+          onOpenChange(false);
+        }}
+      />
+    </>
   );
 }

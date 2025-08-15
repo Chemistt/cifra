@@ -11,21 +11,8 @@ const f = createUploadthing();
 
 export const fileUTRouter = {
   mainFileUploader: f({
-    image: {
-      /**
-       * For full list of options and defaults, see the File Route API reference
-       * @see https://docs.uploadthing.com/file-routes#route-config
-       */
-      maxFileSize: "4MB",
-    },
-    pdf: {
-      maxFileSize: "4MB",
-    },
     blob: {
-      /**
-       * For encrypted files (application/octet-stream)
-       */
-      maxFileSize: "4MB",
+      maxFileSize: "8MB",
     },
   })
     .input(

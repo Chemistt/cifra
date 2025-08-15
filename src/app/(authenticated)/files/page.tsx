@@ -10,7 +10,9 @@ import {
   InfoIcon,
   KeyRoundIcon,
   LockIcon,
+  MoveIcon,
   PlusIcon,
+  RotateCcwIcon,
   SearchIcon,
   ShareIcon,
   TagIcon,
@@ -28,8 +30,10 @@ import { EncryptedFileUploadDialog } from "@/components/encrypted-file-upload-di
 import { FileTagDialog } from "@/components/file-add-tag";
 import { FileDeleteDialog } from "@/components/file-delete-dialog";
 import { FileMetadataDrawer } from "@/components/file-metadata-drawer";
+import { FileMoveDialog } from "@/components/file-move-dialog";
 import { FilePasswordDialog } from "@/components/file-password-dialog";
 import { FileRenameDialog } from "@/components/file-rename-dialog";
+import { FileResetPasswordDialog } from "@/components/file-reset-password-dialog";
 import {
   FileSharingDialog,
   type ShareableFile,
@@ -89,10 +93,12 @@ const formatPathDisplay = (path: string[]) => {
 
 type FileAction =
   | { type: "rename"; file: { id: string; name: string } }
+  | { type: "move"; file: { id: string; name: string } }
   | { type: "delete"; fileId: string }
   | { type: "metadata"; fileId: string }
   | { type: "changePassword"; fileId: string }
   | { type: "removePassword"; fileId: string }
+  | { type: "resetPassword"; fileId: string }
   | { type: "setPassword"; fileId: string }
   | { type: "share"; fileId: string }
   | { type: "download"; fileId: string };
@@ -126,7 +132,7 @@ function FileActionsContextMenu({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent className="w-58">
         <ContextMenuItem
           onClick={() => {
             onFileAction({ type: "metadata", fileId: file.id });
@@ -148,6 +154,17 @@ function FileActionsContextMenu({
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => {
+            onFileAction({
+              type: "move",
+              file: { id: file.id, name: file.name },
+            });
+          }}
+        >
+          <MoveIcon className="mr-2 h-4 w-4" />
+          Move
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => {
             onFileAction({ type: "download", fileId: file.id });
           }}
         >
@@ -164,7 +181,14 @@ function FileActionsContextMenu({
               <KeyRoundIcon className="mr-2 h-4 w-4" />
               Change Password
             </ContextMenuItem>
-
+            <ContextMenuItem
+              onClick={() => {
+                onFileAction({ type: "resetPassword", fileId: file.id });
+              }}
+            >
+              <RotateCcwIcon className="mr-2 h-4 w-4" />
+              Reset Password
+            </ContextMenuItem>
             <ContextMenuItem
               onClick={() => {
                 onFileAction({ type: "removePassword", fileId: file.id });
@@ -533,6 +557,9 @@ export default function FilesPage() {
   const [changePasswordDialogFileId, setChangePasswordDialogFileId] = useState<
     string | undefined
   >();
+  const [resetPasswordDialogFileId, setResetPasswordDialogFileId] = useState<
+    string | undefined
+  >();
   const [removePasswordDialogFileId, setRemovePasswordDialogFileId] = useState<
     string | undefined
   >();
@@ -546,6 +573,9 @@ export default function FilesPage() {
     string | undefined
   >();
   const [renameDialogFile, setRenameDialogFile] = useState<
+    { id: string; name: string } | undefined
+  >();
+  const [moveDialogFile, setMoveDialogFile] = useState<
     { id: string; name: string } | undefined
   >();
   const [metadataDrawerFileId, setMetadataDrawerFileId] = useState<
@@ -631,6 +661,10 @@ export default function FilesPage() {
         setRenameDialogFile(action.file);
         break;
       }
+      case "move": {
+        setMoveDialogFile(action.file);
+        break;
+      }
       case "delete": {
         setDeleteDialogFileId(action.fileId);
         break;
@@ -641,6 +675,10 @@ export default function FilesPage() {
       }
       case "changePassword": {
         setChangePasswordDialogFileId(action.fileId);
+        break;
+      }
+      case "resetPassword": {
+        setResetPasswordDialogFileId(action.fileId);
         break;
       }
       case "removePassword": {
@@ -1023,6 +1061,19 @@ export default function FilesPage() {
           />
         )}
 
+        {/* File Move Dialog */}
+        {moveDialogFile && (
+          <FileMoveDialog
+            fileId={moveDialogFile.id}
+            fileName={moveDialogFile.name}
+            currentFolderId={folderContents?.baseFolderId ?? ""}
+            open={!!moveDialogFile}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setMoveDialogFile(undefined);
+            }}
+          />
+        )}
+
         {/* File Metadata Drawer */}
         {metadataDrawerFileId && (
           <FileMetadataDrawer
@@ -1050,6 +1101,20 @@ export default function FilesPage() {
             open={!!changePasswordDialogFileId}
             onOpenChange={(open) => {
               if (!open) setChangePasswordDialogFileId(undefined);
+            }}
+          />
+        )}
+
+        {resetPasswordDialogFileId && (
+          <FileResetPasswordDialog
+            fileId={resetPasswordDialogFileId}
+            fileName={
+              filesToRender.find((f) => f.id === resetPasswordDialogFileId)
+                ?.name ?? ""
+            }
+            open={!!resetPasswordDialogFileId}
+            onOpenChange={(open) => {
+              if (!open) setResetPasswordDialogFileId(undefined);
             }}
           />
         )}

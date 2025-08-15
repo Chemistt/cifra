@@ -1,7 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient,useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import {
   EditIcon,
   Eye,
@@ -16,6 +20,7 @@ import { useForm, type UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { TotpVerificationDialog } from "@/components/totp-verification-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +63,9 @@ const SET_PASSWORD_SCHEMA = z
 const CHANGE_PASSWORD_SCHEMA = z
   .object({
     currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z.string().min(8, "New password must be at least 8 characters long"),
+    newPassword: z
+      .string()
+      .min(8, "New password must be at least 8 characters long"),
     confirmNewPassword: z.string().min(1, "Please confirm your new password"),
   })
   .refine((data) => data.newPassword === data.confirmNewPassword, {
@@ -115,7 +122,7 @@ function PasswordField({
           type="button"
           variant="ghost"
           size="sm"
-          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+          className="absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
           onClick={onToggleVisibility}
         >
           {visible ? (
@@ -125,9 +132,7 @@ function PasswordField({
           )}
         </Button>
       </div>
-      {error && (
-        <div className="text-destructive text-sm mt-1">{error}</div>
-      )}
+      {error && <div className="text-destructive mt-1 text-sm">{error}</div>}
     </div>
   );
 }
@@ -137,10 +142,14 @@ export function SettingsPassword() {
   const queryClient = useQueryClient();
   const [isSetDialogOpen, setIsSetDialogOpen] = useState(false);
   const [isChangeDialogOpen, setIsChangeDialogOpen] = useState(false);
-  
+  const [isTotpVerificationOpen, setIsTotpVerificationOpen] = useState(false);
+  const [pendingPasswordChange, setPendingPasswordChange] = useState<
+    ChangePasswordForm | undefined
+  >();
+
   // Password visibility states
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
-  
+
   const togglePassword = (key: string) => {
     setShowPassword((previous) => ({ ...previous, [key]: !previous[key] }));
   };
@@ -166,8 +175,15 @@ export function SettingsPassword() {
     },
   });
 
-  const passwordStatusQuery = useSuspenseQuery(trpc.totp.hasPassword.queryOptions());
+  const passwordStatusQuery = useSuspenseQuery(
+    trpc.totp.hasPassword.queryOptions(),
+  );
+  const totpStatusQuery = useSuspenseQuery(
+    trpc.totp.hasTotpEnabled.queryOptions(),
+  );
+
   const { hasPassword } = passwordStatusQuery.data;
+  const { hasTotpEnabled } = totpStatusQuery.data;
 
   const setPasswordMutation = useMutation(
     trpc.totp.setPassword.mutationOptions({
@@ -189,9 +205,13 @@ export function SettingsPassword() {
         toast.success("Password changed successfully");
         changePasswordForm.reset();
         setIsChangeDialogOpen(false);
+        setIsTotpVerificationOpen(false);
+        setPendingPasswordChange(undefined);
       },
       onError: (error) => {
         toast.error(error.message);
+        setIsTotpVerificationOpen(false);
+        setPendingPasswordChange(undefined);
       },
     }),
   );
@@ -216,20 +236,44 @@ export function SettingsPassword() {
   );
 
   const handleSetPassword = (data: SetPasswordForm) => {
-    setPasswordMutation.mutate({ 
+    setPasswordMutation.mutate({
       password: data.password,
       confirmPassword: data.confirmPassword,
     });
   };
 
   const handleChangePassword = (data: ChangePasswordForm) => {
-    changePasswordMutation.mutate({ 
+    if (hasTotpEnabled) {
+      // Store the password change data and show TOTP verification
+      setPendingPasswordChange(data);
+      setIsTotpVerificationOpen(true);
+    } else {
+      // Proceed directly with password change if TOTP is not enabled
+      executePasswordChange(data);
+    }
+  };
+
+  const executePasswordChange = (data: ChangePasswordForm) => {
+    changePasswordMutation.mutate({
       currentPassword: data.currentPassword,
       newPassword: data.newPassword,
       confirmNewPassword: data.confirmNewPassword,
     });
-  };  
-  
+  };
+
+  const handleTotpVerificationSuccess = () => {
+    if (pendingPasswordChange) {
+      executePasswordChange(pendingPasswordChange);
+      setPendingPasswordChange(undefined);
+    }
+    setIsTotpVerificationOpen(false);
+  };
+
+  const handleTotpVerificationError = () => {
+    toast.error("TOTP verification failed. Password change cancelled.");
+    setPendingPasswordChange(undefined);
+  };
+
   const handleDeletePassword = () => {
     deletePasswordMutation.mutate();
   };
@@ -265,9 +309,11 @@ export function SettingsPassword() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Password</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete your password? <br/>
-                  This will remove password-based login and disable TOTP for your account. <br/>
-                  Make sure you have other authentication methods set up before proceeding.
+                  Are you sure you want to delete your password? <br />
+                  This will remove password-based login and disable TOTP for
+                  your account. <br />
+                  Make sure you have other authentication methods set up before
+                  proceeding.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -317,9 +363,12 @@ export function SettingsPassword() {
             </CardDescription>
           </div>
           {!hasPassword && (
-            <Button onClick={() => {
-              setIsSetDialogOpen(true);
-            }} size="sm">
+            <Button
+              onClick={() => {
+                setIsSetDialogOpen(true);
+              }}
+              size="sm"
+            >
               <PlusIcon className="h-4 w-4" />
               Set Password
             </Button>
@@ -382,10 +431,7 @@ export function SettingsPassword() {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={setPasswordMutation.isPending}
-              >
+              <Button type="submit" disabled={setPasswordMutation.isPending}>
                 {setPasswordMutation.isPending ? (
                   <Loader2Icon className="h-4 w-4 animate-spin" />
                 ) : (
@@ -461,10 +507,7 @@ export function SettingsPassword() {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={changePasswordMutation.isPending}
-              >
+              <Button type="submit" disabled={changePasswordMutation.isPending}>
                 {changePasswordMutation.isPending ? (
                   <Loader2Icon className="h-4 w-4 animate-spin" />
                 ) : (
@@ -475,6 +518,23 @@ export function SettingsPassword() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* TOTP Verification Dialog for Password Change */}
+      <TotpVerificationDialog
+        open={isTotpVerificationOpen}
+        onOpenChange={(open) => {
+          setIsTotpVerificationOpen(open);
+          if (!open) {
+            // If dialog is closed without success, clear pending password change
+            setPendingPasswordChange(undefined);
+          }
+        }}
+        onSuccess={handleTotpVerificationSuccess}
+        onError={handleTotpVerificationError}
+        title="Verify Identity for Password Change"
+        description="Please verify your identity with TOTP before changing your password."
+        trustDeviceOption={false} // Don't allow trusting device for password changes
+      />
     </>
   );
 }

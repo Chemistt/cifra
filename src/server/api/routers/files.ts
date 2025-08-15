@@ -27,6 +27,11 @@ const REMOVE_PASSWORD_SCHEMA = z.object({
   currentPassword: z.string().min(1),
 });
 
+const RESET_PASSWORD_SCHEMA = z.object({
+  fileId: z.string(),
+  newPassword: z.string().min(1, "New password is required"),
+});
+
 const UserTagSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -115,6 +120,51 @@ const removeFilePassword = protectedProcedure
     });
 
     return { success: true };
+  });
+
+const resetFilePassword = protectedProcedure
+  .input(RESET_PASSWORD_SCHEMA)
+  .mutation(async ({ ctx, input }) => {
+    const { fileId, newPassword } = input;
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    // Verify user has 2FA enabled (required for password reset)
+    if (!user.twoFactorEnabled) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message:
+          "Two-factor authentication must be enabled to reset file passwords",
+      });
+    }
+
+    // Verify file exists and user owns it
+    const file = await ctx.db.file.findFirst({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      select: { id: true, name: true, passwordHash: true },
+    });
+
+    if (!file) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "File not found" });
+    }
+
+    if (!file.passwordHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "File does not have a password set",
+      });
+    }
+
+    // Hash the new password
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    // Update the file with new password hash
+    await ctx.db.file.update({
+      where: { id: fileId, ownerId: userId, deletedAt: undefined },
+      data: { passwordHash: newHash },
+    });
+
+    return { success: true, fileName: file.name };
   });
 
 const FolderFolderSchema = z.object({
@@ -847,6 +897,7 @@ export const filesRouter = createTRPCRouter({
   verifyFilePassword,
   changeFilePassword,
   removeFilePassword,
+  resetFilePassword,
 
   getFileMetadata: protectedProcedure
     .input(
@@ -1268,6 +1319,89 @@ export const filesRouter = createTRPCRouter({
       });
 
       return deletedFolder;
+    }),
+  moveFile: protectedProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        targetFolderId: z.string().optional(), // Optional to allow moving to root
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { user } = ctx.session;
+      const userId = user.id;
+      const { fileId } = input;
+      let { targetFolderId } = input;
+
+      // If no targetFolderId provided, move to root folder
+      targetFolderId ??= await getRootFolder({
+        db: ctx.db,
+        ownerId: userId,
+      });
+
+      // First, verify the file belongs to the user and is not deleted
+      const existingFile = await ctx.db.file.findFirst({
+        where: {
+          id: fileId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!existingFile) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "File not found or you don't have permission to move it",
+        });
+      }
+
+      // Verify the target folder belongs to the user and is not deleted
+      const targetFolder = await ctx.db.folder.findFirst({
+        where: {
+          id: targetFolderId,
+          ownerId: userId,
+          deletedAt: null,
+        },
+      });
+
+      if (!targetFolder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "Target folder not found or you don't have permission to access it",
+        });
+      }
+
+      // Check if a file with the same name already exists in the target folder
+      const existingFileInTarget = await ctx.db.file.findFirst({
+        where: {
+          name: existingFile.name,
+          folderId: targetFolderId,
+          ownerId: userId,
+          deletedAt: null,
+          NOT: { id: fileId }, // Exclude the file being moved
+        },
+      });
+
+      if (existingFileInTarget) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `A file named "${existingFile.name}" already exists in the target folder`,
+        });
+      }
+
+      // Move the file by updating its folderId
+      const movedFile = await ctx.db.file.update({
+        where: {
+          id: fileId,
+        },
+        data: {
+          folderId: targetFolderId,
+          updatedAt: new Date(),
+        },
+      });
+
+      return movedFile;
     }),
 });
 

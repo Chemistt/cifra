@@ -3,17 +3,81 @@
 import { KeyIcon, LockIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
+import { PasswordSignInDialog } from "@/components/password-sign-in-dialog";
+import { TotpVerificationDialog } from "@/components/totp-verification-dialog";
 import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-import { PasswordSignInDialog } from "./password-sign-in-dialog";
+const handleTotpError = (error: string) => {
+  console.error("TOTP verification failed:", error);
+  toast.error("TOTP verification failed. Please try again.");
+};
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [showTotpDialog, setShowTotpDialog] = useState(false);
   const router = useRouter();
+
+  const handleTotpSuccess = () => {
+    setShowTotpDialog(false);
+    router.push("/");
+  };
+
+  const handleSocialSignIn = (provider: "google" | "discord") => {
+    void signIn.social(
+      {
+        provider,
+        callbackURL: "/",
+      },
+      {
+        onRequest: () => {
+          setLoading(true);
+        },
+        onResponse: () => {
+          setLoading(false);
+        },
+        onSuccess: (context) => {
+          const data = context.data as { twoFactorRedirect?: boolean };
+          if (data.twoFactorRedirect) {
+            // User has 2FA enabled, show TOTP verification dialog
+            setShowTotpDialog(true);
+            return;
+          }
+          // No 2FA required, redirect normally
+          router.push("/");
+        },
+        onError: (context) => {
+          console.error("Social sign-in failed:", context.error);
+          toast.error("Sign in failed. Please try again.");
+        },
+      },
+    );
+  };
+
+  const handlePasskeySignIn = () => {
+    void signIn.passkey({
+      fetchOptions: {
+        onSuccess: (context) => {
+          const data = context.data as { twoFactorRedirect?: boolean };
+          if (data.twoFactorRedirect) {
+            // User has 2FA enabled, show TOTP verification dialog
+            setShowTotpDialog(true);
+            return;
+          }
+          // No 2FA required, redirect normally
+          router.push("/");
+        },
+        onError: (context) => {
+          console.error("Passkey sign-in failed:", context.error);
+          toast.error("Passkey sign in failed. Please try again.");
+        },
+      },
+    });
+  };
 
   return (
     <div
@@ -27,20 +91,7 @@ export default function SignIn() {
         className={cn("w-full gap-2")}
         disabled={loading}
         onClick={() => {
-          void signIn.social(
-            {
-              provider: "google",
-              callbackURL: "/",
-            },
-            {
-              onRequest: () => {
-                setLoading(true);
-              },
-              onResponse: () => {
-                setLoading(false);
-              },
-            },
-          );
+          handleSocialSignIn("google");
         }}
       >
         <svg
@@ -73,20 +124,7 @@ export default function SignIn() {
         className={cn("w-full gap-2")}
         disabled={loading}
         onClick={() => {
-          void signIn.social(
-            {
-              provider: "discord",
-              callbackURL: "/",
-            },
-            {
-              onRequest: () => {
-                setLoading(true);
-              },
-              onResponse: () => {
-                setLoading(false);
-              },
-            },
-          );
+          handleSocialSignIn("discord");
         }}
       >
         <svg
@@ -106,15 +144,7 @@ export default function SignIn() {
         variant="outline"
         className={cn("w-full gap-2")}
         disabled={loading}
-        onClick={() => {
-          void signIn.passkey({
-            fetchOptions: {
-              onSuccess: () => {
-                router.push("/");
-              },
-            },
-          });
-        }}
+        onClick={handlePasskeySignIn}
       >
         <KeyIcon className="h-4 w-4" />
         Sign in with Passkey
@@ -130,10 +160,19 @@ export default function SignIn() {
         <LockIcon className="h-4 w-4" />
         Sign in with Password
       </Button>
-      
+
       <PasswordSignInDialog
         open={passwordDialogOpen}
         onOpenChange={setPasswordDialogOpen}
+      />
+
+      <TotpVerificationDialog
+        open={showTotpDialog}
+        onOpenChange={setShowTotpDialog}
+        onSuccess={handleTotpSuccess}
+        onError={handleTotpError}
+        title="Complete Sign In"
+        description="Please enter your TOTP code to complete the sign-in process."
       />
     </div>
   );

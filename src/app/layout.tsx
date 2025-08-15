@@ -11,7 +11,7 @@ import { TRPCReactProvider } from "@/trpc/react";
 
 export const metadata: Metadata = {
   title: "CIFRA",
-  description: "Created by my blood.",
+  description: "Built with security in mind.",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
