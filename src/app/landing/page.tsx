@@ -86,6 +86,21 @@ export default function LandingPage() {
               Learn More
             </Button>
           </div>
+
+          <div className="mt-8 text-center">
+            <p className="text-muted-foreground mb-2 text-sm">
+              📚 Final Year Project (CSIT321) - FYP-25-S2-37P
+            </p>
+            <Button variant="ghost" size="sm" asChild className="text-xs">
+              <Link
+                href="https://drive.google.com/drive/folders/1lzAP_K2Wjd9uJiwa-umHvtkcu4LjaxG9?usp=sharing"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View Project Documentation & Requirements →
+              </Link>
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -141,6 +156,114 @@ export default function LandingPage() {
                 <div className="text-primary text-4xl font-bold">∞</div>
                 <div className="text-muted-foreground">File Types</div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Team Section */}
+      <section className="container mx-auto px-4 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-16 space-y-4 text-center">
+            <h2 className="text-3xl font-bold tracking-tight">Meet Our Team</h2>
+            <p className="text-muted-foreground mx-auto max-w-2xl text-lg">
+              Computer Science students passionate about cybersecurity and
+              secure file management
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <Card className="text-center">
+              <CardHeader>
+                <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                  <span className="text-primary text-lg font-bold">NX</span>
+                </div>
+                <CardTitle className="text-lg">Ng Xi Wen</CardTitle>
+                <CardDescription>Team Member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">UOW ID: 7894806</p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                  <span className="text-primary text-lg font-bold">EK</span>
+                </div>
+                <CardTitle className="text-lg">
+                  Emmanuel Kevin Suraiskumar
+                </CardTitle>
+                <CardDescription>Team Member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">UOW ID: 8552496</p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                  <span className="text-primary text-lg font-bold">LK</span>
+                </div>
+                <CardTitle className="text-lg">Leong Kuang Yi</CardTitle>
+                <CardDescription>Team Member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">UOW ID: 8876393</p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                  <span className="text-primary text-lg font-bold">LZ</span>
+                </div>
+                <CardTitle className="text-lg">Low Zhao Fei</CardTitle>
+                <CardDescription>Team Member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">UOW ID: 8220712</p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                  <span className="text-primary text-lg font-bold">ET</span>
+                </div>
+                <CardTitle className="text-lg">Eefrey Ten</CardTitle>
+                <CardDescription>Team Member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">UOW ID: 8875728</p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <div className="bg-primary/10 mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                  <span className="text-primary text-lg font-bold">LI</span>
+                </div>
+                <CardTitle className="text-lg">
+                  Lina Nur Iman Binte Mhd Said
+                </CardTitle>
+                <CardDescription>Team Member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm">UOW ID: 8219710</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="mt-16 text-center">
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-sm">
+                <strong>Supervisor:</strong> Mr Ee Kiam Keong
+              </p>
+              <p className="text-muted-foreground text-sm">
+                <strong>Assessor:</strong> Dr Loo Poh Kok
+              </p>
             </div>
           </div>
         </div>
