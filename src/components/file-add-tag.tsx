@@ -44,7 +44,6 @@ function FileTagDialog({
 
   // Sync internal open state with prop
   React.useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     setInternalOpen(open);
   }, [open]);
 

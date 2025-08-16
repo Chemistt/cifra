@@ -1,7 +1,14 @@
 "use client";
 
 import type { User } from "better-auth";
-import { FileIcon, Home, Settings, ShareIcon, Trash2Icon } from "lucide-react";
+import {
+  ChartBarIncreasing,
+  FileIcon,
+  Home,
+  Settings,
+  ShareIcon,
+  Trash2Icon,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -30,6 +37,11 @@ const items = [
     title: "Files",
     url: "/files",
     icon: FileIcon,
+  },
+  {
+    title: "Analytics",
+    url: "/insights",
+    icon: ChartBarIncreasing,
   },
   {
     title: "Shared Files",
