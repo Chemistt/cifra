@@ -1403,6 +1403,195 @@ export const filesRouter = createTRPCRouter({
 
       return movedFile;
     }),
+
+  // Analytics endpoints
+  getFileUploadStats: protectedProcedure.query(async ({ ctx }) => {
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    // Get file upload counts by month for the last 12 months
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const monthlyUploads = await ctx.db.$queryRaw<
+      { month: string; count: number }[]
+    >`
+      SELECT 
+        TO_CHAR(DATE_TRUNC('month', "createdAt"), 'YYYY-MM') as month,
+        COUNT(*)::int as count
+      FROM "dbo"."File"
+      WHERE "ownerId" = ${userId}
+        AND "deletedAt" IS NULL
+        AND "createdAt" >= ${oneYearAgo}
+      GROUP BY DATE_TRUNC('month', "createdAt")
+      ORDER BY DATE_TRUNC('month', "createdAt")
+    `;
+
+    // Get total statistics
+    const totalFiles = await ctx.db.file.count({
+      where: {
+        ownerId: userId,
+        deletedAt: null,
+      },
+    });
+
+    const totalSizeResult = await ctx.db.file.aggregate({
+      where: {
+        ownerId: userId,
+        deletedAt: null,
+      },
+      _sum: {
+        size: true,
+      },
+    });
+
+    const totalSize = totalSizeResult._sum.size ?? BigInt(0);
+
+    return {
+      monthlyUploads,
+      totalFiles,
+      totalSize: totalSize.toString(),
+      totalSizeFormatted: formatFileSize(totalSize),
+    };
+  }),
+
+  getMimeTypeStats: protectedProcedure.query(async ({ ctx }) => {
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    const mimeTypeStats = await ctx.db.$queryRaw<
+      { mimeType: string; count: number; totalSize: string }[]
+    >`
+      SELECT 
+        "mimeType",
+        COUNT(*)::int as count,
+        SUM("size")::text as "totalSize"
+      FROM "dbo"."File"
+      WHERE "ownerId" = ${userId}
+        AND "deletedAt" IS NULL
+      GROUP BY "mimeType"
+      ORDER BY count DESC
+    `;
+
+    // Categorize mime types for better visualization
+    const categorizedStats: {
+      category: string;
+      count: number;
+      totalSize: string;
+      types: { mimeType: string; count: number; totalSize: string }[];
+    }[] = [];
+
+    for (const item of mimeTypeStats) {
+      const { mimeType, count, totalSize } = item;
+      const category = categorizeFileType(mimeType);
+
+      const existing = categorizedStats.find(
+        (cat) => cat.category === category,
+      );
+      if (existing) {
+        existing.count += count;
+        existing.totalSize = (
+          BigInt(existing.totalSize) + BigInt(totalSize)
+        ).toString();
+        existing.types.push({ mimeType, count, totalSize });
+      } else {
+        categorizedStats.push({
+          category,
+          count,
+          totalSize,
+          types: [{ mimeType, count, totalSize }],
+        });
+      }
+    }
+
+    return categorizedStats;
+  }),
+
+  getStorageStats: protectedProcedure.query(async ({ ctx }) => {
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    // Get file size distribution
+    const sizeRanges = [
+      { label: "< 1 MB", min: 0, max: 1024 * 1024 },
+      { label: "1-10 MB", min: 1024 * 1024, max: 10 * 1024 * 1024 },
+      { label: "10-100 MB", min: 10 * 1024 * 1024, max: 100 * 1024 * 1024 },
+      {
+        label: "100 MB - 1 GB",
+        min: 100 * 1024 * 1024,
+        max: 1024 * 1024 * 1024,
+      },
+      {
+        label: "> 1 GB",
+        min: 1024 * 1024 * 1024,
+        max: Number.MAX_SAFE_INTEGER,
+      },
+    ];
+
+    const sizeDistribution = await Promise.all(
+      sizeRanges.map(async (range) => {
+        const count = await ctx.db.file.count({
+          where: {
+            ownerId: userId,
+            deletedAt: null,
+            size: {
+              gte: range.min,
+              lt: range.max === Number.MAX_SAFE_INTEGER ? undefined : range.max,
+            },
+          },
+        });
+
+        const totalSize = await ctx.db.file.aggregate({
+          where: {
+            ownerId: userId,
+            deletedAt: null,
+            size: {
+              gte: range.min,
+              lt: range.max === Number.MAX_SAFE_INTEGER ? undefined : range.max,
+            },
+          },
+          _sum: {
+            size: true,
+          },
+        });
+
+        return {
+          label: range.label,
+          count,
+          totalSize: (totalSize._sum.size ?? BigInt(0)).toString(),
+          totalSizeFormatted: formatFileSize(totalSize._sum.size ?? BigInt(0)),
+        };
+      }),
+    );
+
+    return sizeDistribution;
+  }),
+
+  getRecentActivity: protectedProcedure.query(async ({ ctx }) => {
+    const { user } = ctx.session;
+    const userId = user.id;
+
+    // Get activity over the last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const dailyActivity = await ctx.db.$queryRaw<
+      { date: string; uploads: number; downloads: number }[]
+    >`
+      SELECT 
+        DATE("createdAt") as date,
+        COUNT(*)::int as uploads,
+        0 as downloads
+      FROM "dbo"."File"
+      WHERE "ownerId" = ${userId}
+        AND "deletedAt" IS NULL
+        AND "createdAt" >= ${thirtyDaysAgo}
+      GROUP BY DATE("createdAt")
+      ORDER BY DATE("createdAt")
+    `;
+
+    return dailyActivity;
+  }),
 });
 
 // Helper function for file size formatting
@@ -1412,4 +1601,30 @@ function formatFileSize(bytes: bigint): string {
   const k = 1024;
   const index = Math.floor(Math.log(Number(bytes)) / Math.log(k));
   return `${String(Math.round((Number(bytes) / Math.pow(k, index)) * 100) / 100)} ${String(sizes[index])}`;
+}
+
+// Helper function to categorize file types
+function categorizeFileType(mimeType: string): string {
+  if (mimeType.startsWith("image/")) return "Images";
+  if (mimeType.startsWith("video/")) return "Videos";
+  if (mimeType.startsWith("audio/")) return "Audio";
+  if (mimeType.startsWith("text/") || mimeType.includes("text")) return "Text";
+  if (
+    mimeType.includes("pdf") ||
+    mimeType.includes("document") ||
+    mimeType.includes("word") ||
+    mimeType.includes("excel") ||
+    mimeType.includes("powerpoint") ||
+    mimeType.includes("presentation")
+  ) {
+    return "Documents";
+  }
+  if (
+    mimeType.includes("zip") ||
+    mimeType.includes("archive") ||
+    mimeType.includes("compressed")
+  ) {
+    return "Archives";
+  }
+  return "Other";
 }
